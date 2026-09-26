@@ -13,6 +13,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgres://${POSTGRES_USER:-courier}:${POSTGRES_PASSWORD:-courier}@db:5432/${POSTGRES_DB:-courier}?sslmode=disable
       REDIS_URL: redis://redis:6379/0
+      COURIER_API_KEY_PEPPER: ${COURIER_API_KEY_PEPPER:-local-dev-pepper-change-me-0123456789}
       COURIER_ENCRYPTION_KEY: ${COURIER_ENCRYPTION_KEY:-}
       # Relaxed on purpose so the api can reach mock-subscriber on the
       # Compose network. Production defaults are true / false.
