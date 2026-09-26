@@ -17,7 +17,7 @@ import (
 type Deps struct {
 	Logger *slog.Logger
 	// Keys and Hasher authenticate every /v1 request.
-	Keys   APIKeyLookup
+	Keys   KeyLookup
 	Hasher domain.APIKeyHasher
 	// Readiness lists the dependencies /readyz probes.
 	Readiness []ReadinessCheck

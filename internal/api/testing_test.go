@@ -25,7 +25,7 @@ func testHasher(t *testing.T) domain.APIKeyHasher {
 	return h
 }
 
-// fakeKeys is an in-memory APIKeyLookup.
+// fakeKeys is an in-memory KeyLookup.
 type fakeKeys struct {
 	byPrefix map[string]domain.APIKey
 	err      error

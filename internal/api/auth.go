@@ -12,9 +12,9 @@ import (
 	"github.com/drkwv34/courier-outbox/internal/domain"
 )
 
-// APIKeyLookup finds a stored API key by its public prefix. Implementations
+// KeyLookup finds a stored API key by its public prefix. Implementations
 // return domain.ErrNotFound for unknown prefixes.
-type APIKeyLookup interface {
+type KeyLookup interface {
 	APIKeyByPrefix(ctx context.Context, prefix string) (domain.APIKey, error)
 }
 
@@ -22,16 +22,16 @@ type ctxKey int
 
 const apiKeyIDKey ctxKey = iota
 
-// APIKeyID returns the authenticated API key id stored by the auth
+// CallerKeyID returns the authenticated API key id stored by the auth
 // middleware. Every tenant-owned query must filter by it (FR-AUTH-003).
-func APIKeyID(ctx context.Context) (string, bool) {
+func CallerKeyID(ctx context.Context) (string, bool) {
 	id, ok := ctx.Value(apiKeyIDKey).(string)
 	return id, ok && id != ""
 }
 
 // requireAPIKey authenticates "Authorization: Bearer <api_key>". Every
 // rejection is the same 401 so callers cannot tell which check failed.
-func requireAPIKey(logger *slog.Logger, keys APIKeyLookup, hasher domain.APIKeyHasher) func(http.Handler) http.Handler {
+func requireAPIKey(logger *slog.Logger, keys KeyLookup, hasher domain.APIKeyHasher) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			raw, ok := bearerToken(r.Header.Get("Authorization"))

@@ -42,7 +42,7 @@ func TestRequireAPIKey_Matrix(t *testing.T) {
 
 			var gotID string
 			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				gotID, _ = APIKeyID(r.Context())
+				gotID, _ = CallerKeyID(r.Context())
 				w.WriteHeader(http.StatusNoContent)
 			})
 			mw := requireAPIKey(discardLogger(), keys, h)(next)
@@ -121,11 +121,11 @@ func TestRequireAPIKey_StoreErrorIsInternal(t *testing.T) {
 	}
 }
 
-func TestAPIKeyID_EmptyContext(t *testing.T) {
+func TestCallerKeyID_EmptyContext(t *testing.T) {
 	t.Parallel()
 
-	if id, ok := APIKeyID(t.Context()); ok || id != "" {
-		t.Fatalf("APIKeyID(empty) = %q, %v; want \"\", false", id, ok)
+	if id, ok := CallerKeyID(t.Context()); ok || id != "" {
+		t.Fatalf("CallerKeyID(empty) = %q, %v; want \"\", false", id, ok)
 	}
 }
 
