@@ -1,0 +1,69 @@
+# Local development stack. Values come from .env (copy .env.example) with
+# local-only defaults so `docker compose config` works without one.
+name: courier-outbox
+
+services:
+  api:
+    build:
+      context: .
+      target: api
+    command: ["serve"]
+    environment:
+      HTTP_ADDR: ${HTTP_ADDR:-:8080}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgres://${POSTGRES_USER:-courier}:${POSTGRES_PASSWORD:-courier}@db:5432/${POSTGRES_DB:-courier}?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      COURIER_ENCRYPTION_KEY: ${COURIER_ENCRYPTION_KEY:-}
+      # Relaxed on purpose so the api can reach mock-subscriber on the
+      # Compose network. Production defaults are true / false.
+      SSRF_PROTECTION: ${SSRF_PROTECTION:-false}
+      ALLOW_HTTP_CALLBACKS: ${ALLOW_HTTP_CALLBACKS:-true}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-courier}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-courier}
+      POSTGRES_DB: ${POSTGRES_DB:-courier}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mock-subscriber:
+    build:
+      context: .
+      target: mock-subscriber
+    environment:
+      MOCK_ADDR: ":9090"
+      MOCK_RESPONSE_STATUS: ${MOCK_RESPONSE_STATUS:-200}
+    ports:
+      - "${MOCK_PORT:-9090}:9090"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
