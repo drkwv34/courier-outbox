@@ -27,7 +27,8 @@ const usage = `usage: courier <command>
 
 commands:
   serve                     run the HTTP API (default)
-  migrate                   apply pending database migrations`
+  migrate                   apply pending database migrations
+  keys create --name <name> create an API key and print it once`
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -47,6 +48,8 @@ func run(args []string) error {
 		return serve()
 	case "migrate":
 		return migrate()
+	case "keys":
+		return keys(args[1:])
 	case "-h", "--help", "help":
 		fmt.Println(usage)
 		return nil
