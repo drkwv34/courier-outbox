@@ -2,8 +2,7 @@
 
 Forward-only SQL migrations for PostgreSQL 16+ (SRS NFR-MAINT-002).
 
-The tool choice (goose vs golang-migrate) lands with the first schema change.
-Record it in an ADR under `docs/architecture/adr/` when it does.
+Tool: [goose v3](https://github.com/pressly/goose) with SQL files embedded in the binary ([ADR 0003](../docs/architecture/adr/0003-goose-embedded-migrations.md)). Apply with `courier migrate` (Compose runs this as the one-shot `migrate` service before `api` starts).
 
 Rules:
 

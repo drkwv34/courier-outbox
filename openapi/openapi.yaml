@@ -1,18 +1,23 @@
 openapi: 3.0.3
 info:
   title: courier-outbox
-  version: 0.0.0
+  version: 0.1.0
   description: |
     Reliable outbound webhook delivery service.
 
-    Scaffold only: this document lists the endpoints that exist today. Each
-    feature change must update it in the same PR as the handler (see
+    This document lists the endpoints that exist today. Each feature change
+    must update it in the same PR as the handler (see
     docs/architecture/patterns-layering.md). The planned surface is in
     SRS §4.2 and openspec/specs/.
+
+    Every path under `/v1` requires `Authorization: Bearer <api_key>`.
+    `/v1` has no routed handlers yet: a valid key still receives 404
+    `not_found` until subscriptions and enqueue land.
   license:
     name: MIT
 servers:
   - url: http://localhost:8080
+security: []
 paths:
   /healthz:
     get:
@@ -32,7 +37,113 @@ paths:
                   status:
                     type: string
                     enum: [ok]
+  /readyz:
+    get:
+      operationId: getReadyz
+      summary: Readiness probe
+      description: |
+        Pings Postgres and Redis. Returns 200 when both answer, otherwise
+        503 with `code` = `unavailable` naming the failing dependencies.
+        Driver errors are never included in the response.
+      tags: [ops]
+      security: []
+      responses:
+        "200":
+          description: Dependencies are reachable.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ready]
+        "503":
+          description: One or more dependencies did not answer.
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: unavailable
+                message: "not ready: redis"
+  /v1/{path}:
+    parameters:
+      - name: path
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Any `/v1` path. None are routed yet.
+    get:
+      operationId: getV1Placeholder
+      summary: Authenticated /v1 surface (empty)
+      description: |
+        Every `/v1` request is authenticated. A valid, unrevoked key that
+        hits an unrouted path receives 404. Missing, malformed, unknown,
+        wrong, or revoked keys receive 401 with identical bodies.
+      tags: [ops]
+      security:
+        - bearerAuth: []
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Authenticated, but no handler is mounted yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: not_found
+                message: resource not found
+    post:
+      operationId: postV1Placeholder
+      summary: Authenticated /v1 surface (empty)
+      tags: [ops]
+      security:
+        - bearerAuth: []
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Authenticated, but no handler is mounted yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+      description: |
+        Producer API key printed once by `courier keys create --name <name>`.
+        Format `co_<prefix>_<secret>`. Send as `Authorization: Bearer <key>`.
+  responses:
+    Unauthorized:
+      description: |
+        Missing, malformed, unknown, wrong, or revoked API key. All five
+        cases share this status, body, and `WWW-Authenticate` header.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            example: 'Bearer realm="courier"'
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: unauthorized
+            message: missing or invalid api key
   schemas:
     Error:
       type: object
