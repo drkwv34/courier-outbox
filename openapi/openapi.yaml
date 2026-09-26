@@ -1,0 +1,49 @@
+openapi: 3.0.3
+info:
+  title: courier-outbox
+  version: 0.0.0
+  description: |
+    Reliable outbound webhook delivery service.
+
+    Scaffold only: this document lists the endpoints that exist today. Each
+    feature change must update it in the same PR as the handler (see
+    docs/architecture/patterns-layering.md). The planned surface is in
+    SRS §4.2 and openspec/specs/.
+  license:
+    name: MIT
+servers:
+  - url: http://localhost:8080
+paths:
+  /healthz:
+    get:
+      operationId: getHealthz
+      summary: Liveness probe
+      tags: [ops]
+      security: []
+      responses:
+        "200":
+          description: Process is alive.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+components:
+  schemas:
+    Error:
+      type: object
+      description: Error envelope returned by every non-2xx response.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable snake_case identifier.
+          example: not_found
+        message:
+          type: string
+          description: Human-readable, safe to display. Never contains secrets.
+          example: resource not found
