@@ -26,7 +26,8 @@ const shutdownTimeout = 10 * time.Second
 const usage = `usage: courier <command>
 
 commands:
-  serve                     run the HTTP API (default)`
+  serve                     run the HTTP API (default)
+  migrate                   apply pending database migrations`
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -44,6 +45,8 @@ func run(args []string) error {
 	switch cmd {
 	case "serve":
 		return serve()
+	case "migrate":
+		return migrate()
 	case "-h", "--help", "help":
 		fmt.Println(usage)
 		return nil
