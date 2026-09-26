@@ -33,7 +33,7 @@ func Load(getenv func(string) string) (Config, error) {
 	var errs []error
 
 	if _, _, err := net.SplitHostPort(cfg.HTTPAddr); err != nil {
-		errs = append(errs, fmt.Errorf("%w: HTTP_ADDR %q: %v", ErrInvalid, cfg.HTTPAddr, err))
+		errs = append(errs, fmt.Errorf("%w: HTTP_ADDR %q: %w", ErrInvalid, cfg.HTTPAddr, err))
 	}
 
 	level, err := parseLevel(valueOr(getenv("LOG_LEVEL"), "info"))

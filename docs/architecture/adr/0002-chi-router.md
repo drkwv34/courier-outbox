@@ -15,6 +15,6 @@ Use `github.com/go-chi/chi/v5`.
 ## Consequences
 
 - Handlers remain plain `http.Handler` / `http.HandlerFunc`, so there is no framework context type and they are trivially testable with `httptest`.
-- Route groups and middleware stacks are explicit. `chi/middleware` supplies RequestID, RealIP, and Recoverer.
+- Route groups and middleware stacks are explicit. `chi/middleware` supplies RequestID and Recoverer. `middleware.RealIP` is deliberately not used because it is deprecated and trivially spoofable.
 - It is a small dependency surface compared with echo, and there is no custom binder or validator magic. Decoding and validation stay explicit in our code.
 - The Go 1.22+ stdlib mux would also work. chi was chosen for route groups and its middleware ecosystem, not out of necessity.

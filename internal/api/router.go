@@ -16,7 +16,6 @@ func NewRouter(logger *slog.Logger) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {

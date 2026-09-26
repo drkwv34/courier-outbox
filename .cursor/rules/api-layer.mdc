@@ -6,7 +6,8 @@ alwaysApply: false
 
 # API layer (full: docs/architecture/patterns-layering.md, error-handling.md)
 
-- chi router; middleware order: RequestID → RealIP → Recoverer → access log → (auth on `/v1` group).
+- chi router; middleware order: RequestID → Recoverer → access log → (auth on `/v1` group).
+- Do NOT use `middleware.RealIP` (deprecated, IP-spoofable). Trust `X-Forwarded-For` only behind a configured, known proxy.
 - Handlers are thin: decode → domain validate → call consumer-declared interface → map error → encode. ~40 lines max.
 - DTOs here with explicit `json:"snake_case"` tags; explicit mapping to/from domain types.
 - Decode with `http.MaxBytesReader` (256 KiB payload cap) + `DisallowUnknownFields`; 413 on overflow.

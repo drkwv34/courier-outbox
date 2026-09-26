@@ -36,7 +36,7 @@
 
 ## HTTP (inbound)
 
-- Use chi router, with middleware from `chi/middleware` where it fits (RequestID, RealIP, Recoverer).
+- Use chi router, with middleware from `chi/middleware` where it fits (RequestID, Recoverer). Never use `middleware.RealIP`: it is deprecated and trusts spoofable headers.
 - Handlers are methods on a struct holding their dependencies, or closures returned by a constructor. No globals.
 - DTOs live in `internal/api` with explicit `json:"snake_case"` tags. Map them to and from domain types explicitly.
 - Decode with `json.NewDecoder(http.MaxBytesReader(...))` and `DisallowUnknownFields()`, and reject trailing data.
