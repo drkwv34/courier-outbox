@@ -1,0 +1,19 @@
+---
+description: Persistence and transactionality - Postgres SoR, short TX, SKIP LOCKED, fencing, migrations
+globs: internal/store/**,migrations/**
+alwaysApply: false
+---
+
+# Store & transactions (full: docs/architecture/transactionality.md)
+
+- Postgres is the system of record. Redis holds only TTL'd advisory state; losing it must not lose or stall deliveries.
+- Explicit SQL only (pgx or sqlc). No ORM, no generic repository.
+- `internal/store` owns every transaction via an `inTx` helper. One use-case-shaped method = one TX. Never expose `pgx.Tx` outside the package.
+- NEVER keep a TX open across outbound HTTP, blocking Redis calls, or sleeps.
+- READ COMMITTED + constraints: `UNIQUE`, `ON CONFLICT`, `FOR UPDATE SKIP LOCKED`, conditional `UPDATE ... WHERE`. No SERIALIZABLE without a design.md.
+- Enqueue: event `ON CONFLICT (api_key_id, idempotency_key) DO NOTHING RETURNING id` + deliveries in the same TX; 0 rows → return existing (replay).
+- Claim in its own short TX (set `lease_owner`, `lease_until`); record result in another TX fenced by `WHERE id=$1 AND lease_owner=$2`; 0 rows → `ErrLeaseLost`.
+- DB clock is authoritative for `next_attempt_at`/`lease_until` (`now() + $delay`).
+- Attempts are append-only. Every query filters by `api_key_id` where tenant-owned.
+- Migrations: forward-only, `NNNNNN_description.sql`, never edit merged files, invariants as constraints (NOT NULL, CHECK, UNIQUE, FK).
+- Every query takes the caller's ctx. Translate driver errors to domain sentinels.

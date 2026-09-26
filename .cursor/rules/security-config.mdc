@@ -1,0 +1,14 @@
+---
+description: Secrets, config and container hygiene
+globs: internal/config/**,.env.example,docker-compose*.yml,Dockerfile,.github/**
+alwaysApply: false
+---
+
+# Security & config (full: docs/architecture/security.md)
+
+- No secrets in git. `.env.example` holds placeholders or obviously local-only dev values; `.env` is gitignored.
+- Every new env var: parsed + validated in `internal/config` (fail fast, `errors.Join` all problems), documented in `.env.example` and README.
+- Secure defaults in code (`SSRF_PROTECTION=true`, `ALLOW_HTTP_CALLBACKS=false`); Compose may relax them explicitly for the local mock.
+- API keys: store prefix + hash only, constant-time compare. Signing secrets: AES-256-GCM with `COURIER_ENCRYPTION_KEY`, returned once.
+- Containers run as non-root, minimal base image, no build tools in the runtime stage.
+- CI uses throwaway service credentials only; never echo secrets in workflow logs.

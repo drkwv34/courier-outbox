@@ -1,0 +1,16 @@
+---
+description: Testing strategy - unit, fuzz, integration (tagged), smoke; conventions
+globs: **/*_test.go,**/testdata/**,scripts/**
+alwaysApply: false
+---
+
+# Testing (full: docs/architecture/testing-strategy.md)
+
+- Table-driven, named cases, `t.Parallel()` when no shared state. Name tests by behaviour: `TestEnqueue_DuplicateKeyReplays`.
+- Unit: domain, sign (golden + fuzz), config, SSRF policy, backoff table, handlers via `httptest` with hand-written fakes of consumer interfaces. No mocking frameworks.
+- Integration: build tag `//go:build integration`; real Postgres/Redis via testcontainers-go or dockertest; real migrations; isolated DB per test/package; run with `go test -race -tags=integration ./...`.
+- Subscribers in tests are `httptest.Server`, never the Compose mock.
+- No `time.Sleep` for sync - injected clock, channels, or poll-with-deadline helper.
+- Assert `errors.Is`, HTTP status, and envelope `code` - not message strings.
+- Mandatory hard edges: backoff table, signature goldens, SSRF allow/deny (IPv6 + mapped), concurrent idempotent enqueue, lease expiry reclaim, crash safety, DLQ replay keeps history, auth matrix, secrets never re-exposed.
+- CI: lint → `go test -race ./...` → integration job (once store exists) → build → image → compose config.

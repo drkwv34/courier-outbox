@@ -1,0 +1,19 @@
+---
+description: Error handling - sentinels, wrapping, translation at adapters, HTTP mapping only in api
+globs: **/*.go
+alwaysApply: false
+---
+
+# Error handling (full: docs/architecture/error-handling.md)
+
+- Sentinels live in `internal/domain/errors.go` (`ErrNotFound`, `ErrConflict`, `ErrValidation`, `ErrInvalidTransition`, `ErrLeaseLost`, ...). Typed errors (e.g. `*ValidationError`) must `Unwrap()` to a sentinel.
+- Wrap on the way up: `fmt.Errorf("store: insert event: %w", err)` - lowercase, no "failed to", no trailing punctuation.
+- Compare with `errors.Is`/`errors.As` only. Never inspect `err.Error()` strings.
+- `internal/store` translates driver errors: `pgx.ErrNoRows`→`ErrNotFound`, SQLSTATE 23505→`ErrConflict`/specific sentinel. pgx types never leak upward.
+- Handle OR return, never both. Log once at the boundary (HTTP error mapper, worker loop).
+- HTTP status codes exist only in `internal/api` (and `cmd/`). One mapping function; envelope `{"code","message"}`:
+  validation_failed 400 · unauthorized 401 · not_found 404 (also for other tenants' resources) · conflict 409 · payload_too_large 413 · rate_limited 429 · unavailable 503 · internal 500.
+- 5xx responses say `"internal error"`; details go to logs with `request_id`.
+- Subscriber non-2xx/timeouts are attempt outcomes (data), not Go errors.
+- Idempotent replay is a result flag, not an error.
+- Panics only for programmer bugs; Recoverer handles handlers, the worker recovers per job.

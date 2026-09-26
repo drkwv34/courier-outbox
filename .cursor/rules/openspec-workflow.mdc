@@ -1,0 +1,13 @@
+---
+description: OpenSpec change proposal workflow
+globs: openspec/**
+alwaysApply: false
+---
+
+# OpenSpec workflow (full: openspec/README.md)
+
+- `openspec/specs/<capability>/spec.md` = current behaviour only. Never add requirements there directly for unmerged work.
+- New work: copy `openspec/templates/` into `openspec/changes/<kebab-verb-id>/` → `proposal.md` (why, what, SRS ids, impact, out of scope), `tasks.md`, optional `design.md`, and deltas in `specs/<capability>/spec.md` using `## ADDED|MODIFIED|REMOVED Requirements`.
+- Each requirement: `### Requirement: <name>` with SHALL/MUST text and ≥1 `#### Scenario:` using **WHEN**/**THEN** bullets.
+- Set `Status: approved` before implementation; tick tasks as commits land.
+- After merge: apply deltas to `openspec/specs/`, move folder to `openspec/changes/archive/YYYY-MM-DD-<id>/`, update `openspec/specs/README.md` status column.

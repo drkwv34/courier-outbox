@@ -1,0 +1,15 @@
+---
+description: slog structured logging, canonical keys, levels, redaction, metrics
+globs: **/*.go
+alwaysApply: false
+---
+
+# Logging & observability (full: docs/architecture/observability.md)
+
+- `log/slog` JSON, built in `cmd/courier`, injected as `*slog.Logger`. No `slog.Default()`/`log.Printf` in internal packages.
+- Constant lowercase messages; data in typed attrs. Use `logger.With(...)` per request/job.
+- Canonical keys only: `request_id`, `api_key_id`, `event_id`, `delivery_id`, `subscription_id`, `attempt`, `status_code`, `duration_ms`, `outcome`, `worker_id`, `err`.
+- Levels: debug (dev detail) · info (lifecycle, delivery outcomes incl. subscriber failures) · warn (lease lost, recoverable anomalies) · error (Courier failed: DB down, 500, panic).
+- NEVER log: API keys/hashes, Authorization header, signing secrets, encryption key, DSNs with credentials, payload bodies (log `payload_bytes`), URL query strings. Implement `LogValue()` on secret-bearing types.
+- Metrics (Prometheus): `courier_deliveries_total{status}`, `courier_attempt_duration_seconds`, `courier_dlq_total`. Bounded labels only - no ids/URLs.
+- `/healthz` never touches deps; `/readyz` pings Postgres + Redis with ≤1s timeouts.
