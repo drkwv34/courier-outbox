@@ -37,19 +37,21 @@ jobs:
       - run: go vet ./...
       - run: go test -race -count=1 ./...
 
-  # Placeholder: enabled by the first change that introduces internal/store.
-  # integration:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v7
-  #     - uses: actions/setup-go@v7
-  #       with: { go-version-file: go.mod }
-  #     - run: go test -race -count=1 -tags=integration ./...
+  integration:
+    name: Integration tests (race, containers)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # testcontainers-go starts Postgres 16 and Redis 7 via the runner's Docker.
+      - run: go test -race -count=1 -tags=integration ./...
 
   build:
     name: Build, compose config, image
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [lint, test, integration]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
