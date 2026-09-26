@@ -8,7 +8,7 @@ Test the hard edges thoroughly: idempotency, the retry schedule, leases, signatu
 |-------|-------|---------|------|
 | **Unit** | `domain`, `sign`, `config`, SSRF policy, backoff, handlers with fake stores | `testing`, `httptest`, hand-written fakes | `go test -race ./...` on every PR |
 | **Fuzz** | `sign` (and URL parsing once added) | native `go test -fuzz` | Seed corpus runs as part of unit tests. Long fuzzing is manual. |
-| **Integration** | `store` against real Postgres/Redis, worker against `httptest.Server` | testcontainers-go **or** ory/dockertest (decide in the persistence change), build tag `integration` | `go test -race -tags=integration ./...` in a CI job with Docker |
+| **Integration** | `store` against real Postgres/Redis, worker against `httptest.Server` | testcontainers-go ([ADR 0005](adr/0005-testcontainers-integration-tests.md)), build tag `integration` | `go test -race -tags=integration ./...` in a CI job with Docker |
 | **Contract** | OpenAPI document validity, handler/OpenAPI agreement | spectral or libopenapi (Should) | CI once the OpenAPI surface exists |
 | **Smoke / E2E** | `docker compose up`, enqueue, mock receives a signed POST within 5s (NFR-PORT-001) | `scripts/smoke.sh` (curl + jq) | CI job before release, and locally |
 | **Load** | ≥ 20 deliveries/s (NFR-PERF-002), enqueue p99 ≤ 50ms (NFR-PERF-001) | `scripts/` load script, Go benchmarks | Manual, results noted in README. Never in CI. |
@@ -40,4 +40,4 @@ Test the hard edges thoroughly: idempotency, the retry schedule, leases, signatu
 
 lint → unit tests (race) → integration tests (race, tagged) → build binary → docker image build → compose config validation.
 
-The scaffold CI runs lint, unit tests (race), build, `docker compose config`, and the image build. The integration job is added by the first change that introduces the store.
+CI runs lint, unit tests (race), integration tests (race, tagged; testcontainers starts Postgres 16 and Redis 7), build, `docker compose config`, and the image build.

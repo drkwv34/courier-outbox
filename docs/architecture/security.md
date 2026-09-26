@@ -8,10 +8,10 @@
 
 ## API keys (FR-AUTH-*, NFR-SEC-001)
 
-- Format (proposed): `co_<prefix>_<random>`. The prefix is 8 chars, stored and displayable. The random part is ≥ 32 bytes, base62 or base32.
-- Store only `prefix` and `key_hash`. The hash choice goes in an ADR with the api-keys change: SHA-256 with a server-side pepper (`COURIER_API_KEY_PEPPER`) is acceptable per SRS, and argon2id is the heavier option.
-- Look up by prefix and compare hashes with `crypto/subtle.ConstantTimeCompare`.
-- The raw key is printed once by `courier keys create` and is never retrievable.
+- Format: `co_<prefix>_<secret>`. The prefix is 8 lowercase base32 chars (5 random bytes), stored and displayable. The secret is 52 lowercase base32 chars (32 random bytes). See [ADR 0004](adr/0004-api-key-hmac-sha256-pepper.md).
+- Store only `prefix` and `key_hash = HMAC-SHA256(COURIER_API_KEY_PEPPER, raw_key)`. The pepper must be at least 32 bytes or the process refuses to start.
+- Look up by prefix and compare hashes with `hmac.Equal`.
+- The raw key is printed once by `courier keys create --name <name>` and is never retrievable.
 - Revoked keys (`revoked_at` set) authenticate as 401, the same response as a wrong key.
 
 ## Signing secrets (FR-SUB-001, FR-ERR-002)

@@ -12,7 +12,7 @@ Guide for coding agents (Cursor / Composer) and humans working on courier-outbox
 ## Layout
 
 ```
-cmd/courier/            composition root (serve today; worker/migrate/keys later)
+cmd/courier/            composition root (serve, migrate, keys create; worker later)
 cmd/mock-subscriber/    local demo webhook target (never deployed)
 internal/api/           HTTP transport + error→HTTP mapping (only place that knows status codes)
 internal/config/        env → validated Config
@@ -31,9 +31,10 @@ docs/architecture/      conventions + ADRs
 ```bash
 go build ./...
 go test -race ./...
+go test -race -tags=integration ./...   # Postgres + Redis via testcontainers
 golangci-lint run            # v2 config in .golangci.yml
 docker compose config -q     # validate compose
-docker compose up --build    # api + postgres + redis + mock-subscriber
+docker compose up --build    # migrate + api + postgres + redis + mock-subscriber
 ```
 
 ## Working agreement

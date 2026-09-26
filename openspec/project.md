@@ -12,7 +12,7 @@ courier-outbox is a reliable outbound webhook delivery service. Producers enqueu
 - Redis 7+ for lease fencing and per-subscription outbound rate limits (never the only copy of state).
 - `log/slog` JSON logs, Prometheus metrics (planned).
 - Docker Compose for local; GitHub Actions for CI; golangci-lint.
-- Integration tests with testcontainers-go or ory/dockertest (decided in the first change that needs it).
+- Integration tests with testcontainers-go ([ADR 0005](../docs/architecture/adr/0005-testcontainers-integration-tests.md)).
 
 ## Conventions
 

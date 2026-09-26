@@ -2,7 +2,7 @@
 
 Reliable outbound webhook delivery: signed payloads, retries with backoff, idempotency keys, and a dead-letter queue, written in Go.
 
-> **Status: architecture first.** This repository currently contains the scaffold only: conventions, specs, a health endpoint, Docker Compose, and CI. Enqueue, delivery, signing, and the DLQ are **not implemented yet**. They land one OpenSpec change at a time (see [`openspec/specs/README.md`](openspec/specs/README.md)).
+> **Status: persistence and API keys.** The scaffold now has a schema, `courier migrate`, `courier keys create`, Bearer auth on `/v1`, and `/healthz` + `/readyz`. Enqueue, delivery, signing, and the DLQ are **not implemented yet**. They land one OpenSpec change at a time (see [`openspec/specs/README.md`](openspec/specs/README.md)).
 
 ## Problem
 
@@ -49,14 +49,22 @@ The full design is in [`docs/architecture/`](docs/architecture/README.md): layer
 ```bash
 cp .env.example .env          # optional; compose has local defaults
 docker compose up --build
+# migrate runs as a one-shot service and must exit 0 before api starts
 curl localhost:8080/healthz   # {"status":"ok"}
+curl localhost:8080/readyz    # {"status":"ready"}
+docker compose run --rm --no-deps api keys create --name local
+curl -i localhost:8080/v1/subscriptions
+# 401 {"code":"unauthorized",...}
 ```
 
-Services: `api` (:8080), `db` Postgres (:5432), `redis` (:6379), and `mock-subscriber` (:9090, logs received webhooks).
+Services: `migrate` (one-shot), `api` (:8080), `db` Postgres (:5432), `redis` (:6379), and `mock-subscriber` (:9090, logs received webhooks).
 
-Without Docker:
+Without Docker, against a running Postgres and Redis:
 
 ```bash
+export DATABASE_URL REDIS_URL COURIER_API_KEY_PEPPER   # see .env.example
+go run ./cmd/courier migrate
+go run ./cmd/courier keys create --name local
 go run ./cmd/courier serve
 ```
 
@@ -64,11 +72,12 @@ go run ./cmd/courier serve
 
 ```bash
 go test -race ./...
+go test -race -tags=integration ./...   # needs Docker (testcontainers)
 golangci-lint run
 docker compose config -q
 ```
 
-CI (GitHub Actions) runs lint, race-enabled unit tests, binary build, compose validation, and image build. Integration tests against real Postgres and Redis arrive with the persistence layer.
+CI (GitHub Actions) runs lint, race-enabled unit tests, race-enabled integration tests (Postgres 16 + Redis 7 via testcontainers), binary build, compose validation, and image build.
 
 ## Consumer responsibilities
 

@@ -4,8 +4,8 @@ Each folder is one capability. Its `spec.md` is the **current** truth: requireme
 
 | Capability | Folder | SRS requirements | Status |
 |------------|--------|------------------|--------|
-| Service operations (health, readiness, OpenAPI, metrics) | `service-ops/` | FR-API-001..003, NFR-OBS-* | `/healthz` only |
-| API keys & authentication | `api-keys/` | FR-AUTH-001..003, NFR-SEC-001 | stub |
+| Service operations (health, readiness, OpenAPI, metrics) | `service-ops/` | FR-API-001..003, NFR-OBS-* | `/healthz` + `/readyz` (archive `add-persistence-and-api-keys` after merge) |
+| API keys & authentication | `api-keys/` | FR-AUTH-001..003, NFR-SEC-001 | CLI + Bearer auth in change `add-persistence-and-api-keys` |
 | Subscriptions & signing secrets | `subscriptions/` | FR-SUB-001..003, FR-ERR-002 | stub |
 | Event enqueue & idempotency | `event-enqueue/` | FR-EVT-001..003, NFR-REL-002, NFR-PERF-001 | stub |
 | Delivery (worker, signing, retries, leases) | `delivery/` | FR-DEL-001..007, NFR-REL-001, NFR-PERF-002 | stub |
