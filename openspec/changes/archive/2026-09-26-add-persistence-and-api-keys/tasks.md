@@ -18,4 +18,4 @@
 - [x] 3.1 `.env.example`, README, and AGENTS.md updated
 - [x] 3.2 CI integration job enabled
 - [x] 3.3 `go test -race ./...`, integration tests, and `golangci-lint run` green
-- [ ] 3.4 Change archived and `openspec/specs/` updated after merge
+- [x] 3.4 Change archived and `openspec/specs/` updated after merge
