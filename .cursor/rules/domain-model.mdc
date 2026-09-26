@@ -1,0 +1,16 @@
+---
+description: Pure domain package rules - entities, invariants, state machine, backoff
+globs: internal/domain/**
+alwaysApply: false
+---
+
+# Domain (full: docs/architecture/domain-model.md)
+
+- Pure Go. Forbidden imports: `net/http`, `database/sql`, pgx, redis, `log/slog`, `os`, any `internal/*` package.
+- No `json:`/`db:` tags on domain structs; api DTOs and store rows map explicitly.
+- Constructors (`NewEvent`, `NewSubscription`, `ParseIdempotencyKey`) validate and return `(T, error)` wrapping `ErrValidation`. Zero values are never valid input.
+- Typed ids (`EventID`, `DeliveryID`, `SubscriptionID`, `APIKeyID`) and typed string enums with `Valid()`.
+- Delivery statuses: `pending`, `retrying`, `delivered` (terminal), `dead_lettered` (replay → `pending`). "In flight" is a lease, not a status.
+- Transitions are methods returning new values or `ErrInvalidTransition`. `attempt_count` never decreases.
+- Backoff is a table: after failure #1..5 → 1s, 5s, 25s, 2m, 10m; #6 → dead-letter. Return `time.Duration`; SQL applies it to DB `now()`.
+- Time and randomness are injected. 100% of domain logic is unit-testable with table tests.

@@ -1,0 +1,18 @@
+---
+description: Go idioms, dependencies, context and concurrency conventions
+globs: **/*.go,go.mod
+alwaysApply: false
+---
+
+# Go conventions (full: docs/architecture/go-conventions.md)
+
+- gofmt/goimports + golangci-lint clean. `//nolint:<linter> // reason` only with a reason.
+- Every exported identifier has a doc comment starting with its name; every package has a package comment.
+- No `util`/`common`/`helpers` packages. No package-level mutable state, no side-effecting `init()`.
+- Constructor injection: `NewX(deps) *X`. Packages never call `os.Getenv` - config comes from `internal/config`.
+- Accept interfaces (declared by the consumer, small), return concrete structs.
+- `ctx context.Context` first param for I/O; never stored in structs; honour cancellation in loops.
+- Every goroutine has an owner, stop path, and error path (prefer errgroup). Fixed-size worker pools.
+- UTC times; `time.Duration` for durations; domain uses an injected Clock.
+- Stdlib first. Pre-approved deps: chi/v5, pgx/v5, go-redis/v9, goose|golang-migrate, testcontainers-go|dockertest, prometheus client_golang, x/sync. Others need PR justification.
+- Prefer boring explicit code over generics/reflection cleverness.

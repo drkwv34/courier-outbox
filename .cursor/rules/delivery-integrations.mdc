@@ -1,0 +1,29 @@
+---
+description: Worker, outbound HTTP client, signing, retries, timeouts, SSRF
+globs: internal/worker/**,internal/sign/**,cmd/mock-subscriber/**
+alwaysApply: false
+---
+
+# Delivery & external integrations (full: docs/architecture/external-integrations.md, security.md)
+
+## Outbound client (one constructor, never http.DefaultClient)
+- Dial 2s, TLS handshake 2s, total `Client.Timeout` 5s, `Proxy: nil`, small `MaxIdleConnsPerHost`.
+- `CheckRedirect` returns `http.ErrUseLastResponse`: redirects are NOT followed; 3xx = failed attempt.
+- Read ≤ 8 KiB of the response, drain, close. `User-Agent: courier-outbox/1.0`.
+- Static subscription headers may not override `X-Courier-*`, `Host`, `Content-Length`.
+
+## SSRF (SSRF_PROTECTION=true default)
+- Validate URL at create/update AND check the resolved IP at dial time (`net.Dialer.Control`) to defeat DNS rebinding.
+- Deny loopback, RFC1918, fc00::/7, link-local (169.254/16 incl. metadata, fe80::/10), 100.64/10, 0.0.0.0/8, unspecified, multicast/broadcast, IPv4-mapped forms (`netip.Addr.Unmap()`).
+- `ALLOW_HTTP_CALLBACKS=false` default → https only. Compose sets permissive values explicitly.
+
+## Worker loop
+- Claim (short TX) → sign → POST with per-attempt ctx timeout (no TX open) → record attempt + fenced update.
+- Retries only via the durable schedule; no in-process retry of subscriber POSTs.
+- DB/Redis errors: log at error, back off with jitter (capped), keep looping. Lease lost: warn, drop.
+- Graceful shutdown: stop claiming, finish in-flight within timeout, cancel the rest.
+
+## Signing (internal/sign, stdlib only)
+- `X-Courier-Signature: v1=<hex(HMAC-SHA256(secret, "{ts}.{raw_body}"))>`, `X-Courier-Timestamp` unix seconds, `X-Courier-Idempotency-Key` = event id.
+- Verify with `hmac.Equal`. Golden-vector table tests AND a fuzz test are mandatory.
+- Secrets decrypted only immediately before signing; never logged or returned.
