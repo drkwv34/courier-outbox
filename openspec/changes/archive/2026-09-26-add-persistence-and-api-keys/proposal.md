@@ -1,7 +1,7 @@
 # Change: Persistence foundation, API keys, and readiness
 
 - **Id:** `add-persistence-and-api-keys`
-- **Status:** approved
+- **Status:** archived
 - **SRS requirements:** FR-AUTH-001, FR-AUTH-002, FR-AUTH-003 (foundation only), FR-API-002, NFR-SEC-001, NFR-MAINT-002
 
 ## Why
