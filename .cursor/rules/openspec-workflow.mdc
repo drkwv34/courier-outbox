@@ -1,13 +1,17 @@
 ---
-description: OpenSpec change proposal workflow
+description: OpenSpec change proposal workflow (Fission-AI CLI)
 globs: openspec/**
 alwaysApply: false
 ---
 
 # OpenSpec workflow (full: openspec/README.md)
 
-- `openspec/specs/<capability>/spec.md` = current behaviour only. Never add requirements there directly for unmerged work.
-- New work: copy `openspec/templates/` into `openspec/changes/<kebab-verb-id>/` → `proposal.md` (why, what, SRS ids, impact, out of scope), `tasks.md`, optional `design.md`, and deltas in `specs/<capability>/spec.md` using `## ADDED|MODIFIED|REMOVED Requirements`.
-- Each requirement: `### Requirement: <name>` with SHALL/MUST text and ≥1 `#### Scenario:` using **WHEN**/**THEN** bullets.
-- Set `Status: approved` before implementation; tick tasks as commits land.
-- After merge: apply deltas to `openspec/specs/`, move folder to `openspec/changes/archive/YYYY-MM-DD-<id>/`, update `openspec/specs/README.md` status column.
+Use the Fission-AI OpenSpec CLI and committed Cursor skills/commands — not ad-hoc Markdown-only process.
+
+- `openspec/specs/<capability>/spec.md` = current behaviour only. Never add unmerged requirements there directly.
+- **Propose:** `/opsx-propose` or skill `openspec-propose` → `openspec/changes/<kebab-verb-id>/` with proposal, tasks, optional design, deltas under `specs/<capability>/spec.md` (`## ADDED|MODIFIED|REMOVED Requirements`).
+- **Apply:** `/opsx-apply` after approval (`Status: approved` in proposal); tick `tasks.md` as commits land.
+- **Validate:** `openspec validate <change-id> --strict` before merge.
+- **Archive:** `/opsx-archive` or `openspec archive <change-id> --yes` after merge; update `openspec/specs/README.md` status when relevant.
+- Each requirement: `### Requirement: <name>` with SHALL/MUST and ≥1 `#### Scenario:` using **WHEN**/**THEN** bullets.
+- Project context for planning: `openspec/config.yaml` (`context:`) and `openspec/project.md`.

@@ -9,7 +9,7 @@ Reliable outbound webhook delivery in Go: Postgres outbox, SKIP LOCKED workers, 
 
 ## Before writing code
 - Read `AGENTS.md`, then the relevant doc in `docs/architecture/`.
-- Non-trivial behaviour (endpoint, table, config var, delivery/signing/SSRF semantics) requires an approved change under `openspec/changes/<id>/` (proposal + spec deltas + tasks). Implement only what the change lists.
+- Non-trivial behaviour (endpoint, table, config var, delivery/signing/SSRF semantics) requires an approved Fission OpenSpec change (`/opsx-propose` → `openspec/changes/<id>/`). Implement only what the change lists (`/opsx-apply`).
 
 ## Layout (fixed - do not invent new top-level internal packages without an ADR)
 - `cmd/courier` composition root · `internal/api` HTTP · `internal/domain` pure model · `internal/store` Postgres/Redis + TX · `internal/worker` delivery loop + outbound client · `internal/sign` HMAC · `internal/config` env · `migrations/` forward-only SQL · `openapi/` contract.

@@ -8,4 +8,10 @@ Planned coverage: FR-DEL-001..007, NFR-REL-001 (no lost deliveries on crash), NF
 
 ## Requirements
 
-_None yet. Requirements are added by the change that implements this capability._
+### Requirement: Delivery capability pending implementation
+The system SHALL NOT deliver events to subscribers until an approved OpenSpec change adds normative requirements to this spec and the change is implemented (planned: FR-DEL-001..007, NFR-REL-001, NFR-PERF-002, NFR-SEC-002).
+
+#### Scenario: Current milestone
+- **WHEN** the repository is at the persistence-and-api-keys milestone
+- **THEN** no delivery worker or outbound webhook POST behavior is implemented
+- **AND** future requirements SHALL be introduced only via `openspec/changes/<id>/` deltas merged into this spec
