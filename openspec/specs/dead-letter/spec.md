@@ -8,4 +8,10 @@ Planned coverage: FR-DLQ-001 (list with filters + pagination), FR-DLQ-002 (repla
 
 ## Requirements
 
-_None yet. Requirements are added by the change that implements this capability._
+### Requirement: Dead-letter capability pending implementation
+The system SHALL NOT expose dead-letter list or replay behavior until an approved OpenSpec change adds normative requirements to this spec and the change is implemented (planned: FR-DLQ-001, FR-DLQ-002, FR-ERR-003).
+
+#### Scenario: Current milestone
+- **WHEN** the repository is at the persistence-and-api-keys milestone
+- **THEN** no DLQ HTTP API or replay worker behavior is implemented
+- **AND** future requirements SHALL be introduced only via `openspec/changes/<id>/` deltas merged into this spec

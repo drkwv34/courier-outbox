@@ -1,0 +1,24 @@
+schema: spec-driven
+
+# Included in OpenSpec planning requests (proposal, apply, archive).
+context: |
+  Project: courier-outbox — reliable outbound webhook delivery in Go.
+  Delivery is at-least-once, never exactly-once.
+
+  Stack: Go (go.mod pin), chi, PostgreSQL 16+, Redis 7+, log/slog, Docker Compose, GitHub Actions, golangci-lint, testcontainers integration tests.
+
+  Layout: cmd/courier, internal/{api,worker,domain,store,sign,config}, migrations/, openapi/.
+  Domain is pure (no net/http). Errors are sentinels; HTTP mapping only in internal/api.
+  Config from env, validated at startup. Raw SQL or sqlc, no ORM.
+
+  Conventions: docs/architecture/, AGENTS.md, .cursor/rules/. Conventional commits; no secrets in git.
+  SRS FR/NFR ids (e.g. FR-EVT-001) come from 02-courier-outbox-srs.md outside the repo.
+  Capability index: openspec/specs/README.md.
+
+rules:
+  proposal:
+    - Reference SRS requirement ids (FR-*, NFR-*) where applicable.
+    - State explicit out-of-scope items.
+  tasks:
+    - Map tasks to small, committable steps; tick as they land.
+    - Include validate and archive steps before merge.

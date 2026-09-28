@@ -4,8 +4,8 @@ Guide for coding agents (Cursor / Composer) and humans working on courier-outbox
 
 ## Read first
 
-1. `openspec/project.md`: what this is and the stack
-2. `openspec/README.md`: **no non-trivial feature without an approved change**
+1. `openspec/config.yaml` and `openspec/project.md`: project context for OpenSpec
+2. `openspec/README.md`: **Fission-AI OpenSpec CLI workflow** — no non-trivial feature without an approved change (`/opsx-propose`, `/opsx-apply`, `/opsx-archive`)
 3. `docs/architecture/README.md`: normative conventions (layering, errors, transactions, logging, integrations, testing, Go style)
 4. `.cursor/rules/*.mdc`: condensed rules, auto-attached by path
 

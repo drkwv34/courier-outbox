@@ -8,4 +8,10 @@ Planned coverage: FR-SUB-001 (create + secret once), FR-SUB-002 (list/get/update
 
 ## Requirements
 
-_None yet. Requirements are added by the change that implements this capability._
+### Requirement: Subscriptions capability pending implementation
+The system SHALL NOT expose subscription CRUD or signing-secret rotation until an approved OpenSpec change adds normative requirements to this spec and the change is implemented (planned: FR-SUB-001..003, FR-ERR-002).
+
+#### Scenario: Current milestone
+- **WHEN** the repository is at the persistence-and-api-keys milestone
+- **THEN** no subscription HTTP API is implemented
+- **AND** future requirements SHALL be introduced only via `openspec/changes/<id>/` deltas merged into this spec
