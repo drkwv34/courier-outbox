@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -78,6 +79,10 @@ func serve() error {
 	if err != nil {
 		return fmt.Errorf("api key hasher: %w", err)
 	}
+	envelope, err := domain.NewEnvelope(cfg.EncryptionKey)
+	if err != nil {
+		return fmt.Errorf("encryption envelope: %w", err)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -104,6 +109,13 @@ func serve() error {
 				{Name: "postgres", Check: pg.Ping},
 				{Name: "redis", Check: rdb.Ping},
 			},
+			Subscriptions: pg,
+			URLPolicy: domain.URLPolicy{
+				AllowHTTP:   cfg.AllowHTTPCallbacks,
+				ProtectSSRF: cfg.SSRFProtection,
+			},
+			Envelope: envelope,
+			Rand:     rand.Reader,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,

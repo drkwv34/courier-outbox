@@ -4,6 +4,7 @@
 package api
 
 import (
+	"io"
 	"log/slog"
 	"net/http"
 
@@ -21,6 +22,12 @@ type Deps struct {
 	Hasher domain.APIKeyHasher
 	// Readiness lists the dependencies /readyz probes.
 	Readiness []ReadinessCheck
+	// Subscriptions is required to mount /v1/subscriptions.
+	Subscriptions SubscriptionStore
+	URLPolicy     domain.URLPolicy
+	Envelope      domain.Envelope
+	// Rand supplies entropy for secrets and nonces. nil means crypto/rand.
+	Rand io.Reader
 }
 
 // NewRouter builds the root HTTP handler.
@@ -48,6 +55,22 @@ func NewRouter(d Deps) http.Handler {
 	v1 := chi.NewRouter()
 	v1.NotFound(notFound)
 	v1.MethodNotAllowed(methodNotAllowed)
+	if d.Subscriptions != nil {
+		h := subscriptionHandlers{
+			logger:   logger,
+			store:    d.Subscriptions,
+			policy:   d.URLPolicy,
+			envelope: d.Envelope,
+			rand:     d.Rand,
+		}
+		v1.Route("/subscriptions", func(r chi.Router) {
+			r.Get("/", h.list)
+			r.Post("/", h.create)
+			r.Get("/{id}", h.get)
+			r.Patch("/{id}", h.patch)
+			r.Post("/{id}/disable", h.disable)
+		})
+	}
 	r.Mount("/v1", requireAPIKey(logger, d.Keys, d.Hasher)(v1))
 
 	return r
