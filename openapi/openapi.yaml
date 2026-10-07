@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: courier-outbox
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Reliable outbound webhook delivery service.
 
@@ -11,8 +11,7 @@ info:
     SRS §4.2 and openspec/specs/.
 
     Every path under `/v1` requires `Authorization: Bearer <api_key>`.
-    `/v1` has no routed handlers yet: a valid key still receives 404
-    `not_found` until subscriptions and enqueue land.
+    Subscription CRUD is implemented. Enqueue, delivery, and DLQ are not.
   license:
     name: MIT
 servers:
@@ -61,11 +60,6 @@ paths:
                     enum: [ready]
         "503":
           description: One or more dependencies did not answer.
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
           content:
             application/json:
               schema:
@@ -73,51 +67,126 @@ paths:
               example:
                 code: unavailable
                 message: "not ready: redis"
-  /v1/{path}:
-    parameters:
-      - name: path
-        in: path
-        required: true
-        schema:
-          type: string
-        description: Any `/v1` path. None are routed yet.
+  /v1/subscriptions:
     get:
-      operationId: getV1Placeholder
-      summary: Authenticated /v1 surface (empty)
-      description: |
-        Every `/v1` request is authenticated. A valid, unrevoked key that
-        hits an unrouted path receives 404. Missing, malformed, unknown,
-        wrong, or revoked keys receive 401 with identical bodies.
-      tags: [ops]
+      operationId: listSubscriptions
+      summary: List subscriptions
+      description: Returns subscriptions owned by the authenticated API key. Signing secrets are never included.
+      tags: [subscriptions]
       security:
         - bearerAuth: []
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          description: Authenticated, but no handler is mounted yet.
+        "200":
+          description: The caller's subscriptions, oldest first.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-              example:
-                code: not_found
-                message: resource not found
+                $ref: "#/components/schemas/SubscriptionList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
     post:
-      operationId: postV1Placeholder
-      summary: Authenticated /v1 surface (empty)
-      tags: [ops]
+      operationId: createSubscription
+      summary: Create a subscription
+      description: |
+        Registers a webhook endpoint. The signing secret is returned once
+        as standard base64 of 32 random bytes and is stored encrypted.
+      tags: [subscriptions]
       security:
         - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSubscriptionRequest"
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          description: Authenticated, but no handler is mounted yet.
+        "201":
+          description: Subscription created. Copy `signing_secret` now.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/SubscriptionWithSecret"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+  /v1/subscriptions/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SubscriptionId"
+    get:
+      operationId: getSubscription
+      summary: Get a subscription
+      tags: [subscriptions]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The subscription. `signing_secret` is omitted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subscription"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateSubscription
+      summary: Update a subscription
+      description: |
+        Partial update. `rotate_secret=true` issues a new signing secret
+        and returns it once. A foreign or missing id is 404.
+      tags: [subscriptions]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchSubscriptionRequest"
+      responses:
+        "200":
+          description: Updated subscription. `signing_secret` is present only after rotate.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionWithSecret"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+  /v1/subscriptions/{id}/disable:
+    parameters:
+      - $ref: "#/components/parameters/SubscriptionId"
+    post:
+      operationId: disableSubscription
+      summary: Disable a subscription
+      description: Sets `enabled` to false. Idempotent. The row remains readable.
+      tags: [subscriptions]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The disabled subscription.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subscription"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   securitySchemes:
     bearerAuth:
@@ -127,6 +196,15 @@ components:
       description: |
         Producer API key printed once by `courier keys create --name <name>`.
         Format `co_<prefix>_<secret>`. Send as `Authorization: Bearer <key>`.
+  parameters:
+    SubscriptionId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Subscription id. Malformed values return 400, not 404.
   responses:
     Unauthorized:
       description: |
@@ -144,6 +222,33 @@ components:
           example:
             code: unauthorized
             message: missing or invalid api key
+    NotFound:
+      description: Resource does not exist or is owned by another API key.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: not_found
+            message: resource not found
+    ValidationFailed:
+      description: Malformed JSON, unknown field, or domain validation failure.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: validation_failed
+            message: "target_url: must use https"
+    PayloadTooLarge:
+      description: Request body exceeded 256 KiB.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: payload_too_large
+            message: request body too large
   schemas:
     Error:
       type: object
@@ -158,3 +263,86 @@ components:
           type: string
           description: Human-readable, safe to display. Never contains secrets.
           example: resource not found
+    Subscription:
+      type: object
+      required: [id, target_url, event_types, headers, enabled, description, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        target_url:
+          type: string
+          format: uri
+        event_types:
+          type: array
+          items:
+            type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        enabled:
+          type: boolean
+        description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    SubscriptionWithSecret:
+      allOf:
+        - $ref: "#/components/schemas/Subscription"
+        - type: object
+          properties:
+            signing_secret:
+              type: string
+              description: Standard base64 of 32 random bytes. Present only on create and rotate.
+    SubscriptionList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Subscription"
+    CreateSubscriptionRequest:
+      type: object
+      required: [target_url]
+      properties:
+        target_url:
+          type: string
+          format: uri
+        event_types:
+          type: array
+          items:
+            type: string
+          default: ["*"]
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        description:
+          type: string
+    PatchSubscriptionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        target_url:
+          type: string
+          format: uri
+        event_types:
+          type: array
+          items:
+            type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        description:
+          type: string
+        enabled:
+          type: boolean
+        rotate_secret:
+          type: boolean

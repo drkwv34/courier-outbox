@@ -5,6 +5,7 @@ package store_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"os"
@@ -218,4 +219,126 @@ func TestPing_UnreachableFails(t *testing.T) {
 	if err := rdb.Ping(t.Context()); err == nil {
 		t.Fatal("Redis.Ping against closed port succeeded")
 	}
+}
+
+func TestSubscriptions_CRUDAndIsolation(t *testing.T) {
+	t.Parallel()
+
+	pg, dsn := migratedDB(t)
+	owner := mustAPIKey(t, pg, uniquePrefix())
+	other := mustAPIKey(t, pg, uniquePrefix())
+
+	plain := bytes.Repeat([]byte{0x42}, domain.SigningSecretBytes)
+	created, err := pg.CreateSubscription(t.Context(), domain.Subscription{
+		APIKeyID:    owner.ID,
+		TargetURL:   "https://example.com/hooks",
+		EventTypes:  []string{"*"},
+		Headers:     map[string]string{"X-Shop": "acme"},
+		Enabled:     true,
+		Description: "primary",
+	}, bytes.Repeat([]byte{0x99}, 48))
+	if err != nil {
+		t.Fatalf("CreateSubscription: %v", err)
+	}
+	if created.ID == "" || created.APIKeyID != owner.ID || !created.Enabled {
+		t.Fatalf("created = %+v", created)
+	}
+
+	enc := secretEnc(t, dsn, created.ID)
+	if bytes.Equal(enc, plain) || bytes.Contains(enc, []byte("example.com")) {
+		t.Fatalf("stored blob looks like plaintext: %x", enc)
+	}
+
+	listed, err := pg.ListSubscriptions(t.Context(), owner.ID)
+	if err != nil || len(listed) != 1 || listed[0].ID != created.ID {
+		t.Fatalf("ListSubscriptions = %v, %v", listed, err)
+	}
+	empty, err := pg.ListSubscriptions(t.Context(), other.ID)
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("other list = %v, %v, want empty", empty, err)
+	}
+
+	got, err := pg.GetSubscription(t.Context(), owner.ID, created.ID)
+	if err != nil || got.TargetURL != "https://example.com/hooks" {
+		t.Fatalf("GetSubscription = %+v, %v", got, err)
+	}
+	_, err = pg.GetSubscription(t.Context(), other.ID, created.ID)
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("foreign get error = %v, want ErrNotFound", err)
+	}
+
+	desc := "updated"
+	patched, err := pg.UpdateSubscription(t.Context(), owner.ID, created.ID, domain.SubscriptionUpdate{Description: &desc})
+	if err != nil || patched.Description != "updated" || patched.TargetURL != created.TargetURL {
+		t.Fatalf("UpdateSubscription = %+v, %v", patched, err)
+	}
+	_, err = pg.UpdateSubscription(t.Context(), other.ID, created.ID, domain.SubscriptionUpdate{Description: &desc})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("foreign update error = %v, want ErrNotFound", err)
+	}
+
+	rotated, err := pg.UpdateSubscription(t.Context(), owner.ID, created.ID, domain.SubscriptionUpdate{SecretEnc: bytes.Repeat([]byte{0x11}, 48)})
+	if err != nil {
+		t.Fatalf("rotate: %v", err)
+	}
+	if bytes.Equal(secretEnc(t, dsn, rotated.ID), enc) {
+		t.Fatal("rotate left ciphertext unchanged")
+	}
+
+	disabled, err := pg.DisableSubscription(t.Context(), owner.ID, created.ID)
+	if err != nil || disabled.Enabled {
+		t.Fatalf("DisableSubscription = %+v, %v", disabled, err)
+	}
+	again, err := pg.DisableSubscription(t.Context(), owner.ID, created.ID)
+	if err != nil || again.Enabled {
+		t.Fatalf("second disable = %+v, %v", again, err)
+	}
+	_, err = pg.DisableSubscription(t.Context(), other.ID, created.ID)
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("foreign disable error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestSubscriptions_UnknownIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	pg, _ := migratedDB(t)
+	key := mustAPIKey(t, pg, uniquePrefix())
+	_, err := pg.GetSubscription(t.Context(), key.ID, "11111111-2222-3333-4444-555555555555")
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("GetSubscription(unknown) = %v, want ErrNotFound", err)
+	}
+}
+
+func mustAPIKey(t *testing.T, pg *store.Postgres, prefix string) domain.APIKey {
+	t.Helper()
+	k, err := pg.CreateAPIKey(t.Context(), "it", prefix, bytes.Repeat([]byte{0xab}, domain.APIKeyHashLen))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return k
+}
+
+func uniquePrefix() string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz234567"
+	var b [8]byte
+	_, _ = rand.Read(b[:])
+	for i := range b {
+		b[i] = alphabet[int(b[i])%len(alphabet)]
+	}
+	return string(b[:])
+}
+
+func secretEnc(t *testing.T, dsn, id string) []byte {
+	t.Helper()
+	conn, err := pgx.Connect(t.Context(), dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	var enc []byte
+	if err := conn.QueryRow(t.Context(), "SELECT signing_secret_enc FROM subscriptions WHERE id = $1::uuid", id).Scan(&enc); err != nil {
+		t.Fatal(err)
+	}
+	return enc
 }
