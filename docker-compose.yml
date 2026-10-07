@@ -8,7 +8,7 @@ x-courier-env: &courier-env
   DATABASE_URL: postgres://${POSTGRES_USER:-courier}:${POSTGRES_PASSWORD:-courier}@db:5432/${POSTGRES_DB:-courier}?sslmode=disable
   REDIS_URL: redis://redis:6379/0
   COURIER_API_KEY_PEPPER: ${COURIER_API_KEY_PEPPER:-local-dev-pepper-change-me-0123456789}
-  COURIER_ENCRYPTION_KEY: ${COURIER_ENCRYPTION_KEY:-}
+  COURIER_ENCRYPTION_KEY: ${COURIER_ENCRYPTION_KEY:-bG9jYWwtZGV2LW9ubHktZW5jLWtleS0zMmJ5dGVzISE=}
   # Relaxed on purpose so the api can reach mock-subscriber on the
   # Compose network. Production defaults are true / false.
   SSRF_PROTECTION: ${SSRF_PROTECTION:-false}

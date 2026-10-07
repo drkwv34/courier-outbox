@@ -4,6 +4,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -15,13 +16,14 @@ import (
 // ErrInvalid is wrapped by every validation failure returned from Load.
 var ErrInvalid = errors.New("invalid config")
 
-// MinPepperBytes is the minimum length of COURIER_API_KEY_PEPPER.
-const MinPepperBytes = 32
+const (
+	// MinPepperBytes is the minimum length of COURIER_API_KEY_PEPPER.
+	MinPepperBytes = 32
+	// EncryptionKeyBytes is the AES-256 key length of COURIER_ENCRYPTION_KEY.
+	EncryptionKeyBytes = 32
+)
 
 // Config is the validated runtime configuration.
-//
-// Fields for COURIER_ENCRYPTION_KEY, SSRF_PROTECTION and ALLOW_HTTP_CALLBACKS
-// are added by the feature changes that consume them.
 type Config struct {
 	HTTPAddr    string
 	LogLevel    slog.Level
@@ -29,6 +31,13 @@ type Config struct {
 	RedisURL    string
 	// APIKeyPepper keys the HMAC used to hash API keys at rest (ADR 0004).
 	APIKeyPepper []byte
+	// EncryptionKey is the AES-256-GCM key for signing secrets at rest.
+	EncryptionKey []byte
+	// SSRFProtection rejects private/loopback/link-local IP literals on
+	// subscription target URLs. Default true.
+	SSRFProtection bool
+	// AllowHTTPCallbacks permits http:// target URLs. Default false.
+	AllowHTTPCallbacks bool
 }
 
 // Load reads configuration using getenv (usually os.Getenv) and validates it.
@@ -63,10 +72,60 @@ func Load(getenv func(string) string) (Config, error) {
 		errs = append(errs, fmt.Errorf("%w: COURIER_API_KEY_PEPPER must be at least %d bytes", ErrInvalid, MinPepperBytes))
 	}
 
+	key, err := parseEncryptionKey(getenv("COURIER_ENCRYPTION_KEY"))
+	if err != nil {
+		errs = append(errs, err)
+	}
+	cfg.EncryptionKey = key
+
+	ssrf, err := parseBool("SSRF_PROTECTION", getenv("SSRF_PROTECTION"), true)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	cfg.SSRFProtection = ssrf
+
+	allowHTTP, err := parseBool("ALLOW_HTTP_CALLBACKS", getenv("ALLOW_HTTP_CALLBACKS"), false)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	cfg.AllowHTTPCallbacks = allowHTTP
+
 	if len(errs) > 0 {
 		return Config{}, errors.Join(errs...)
 	}
 	return cfg, nil
+}
+
+// parseEncryptionKey decodes standard or raw-standard base64 into exactly 32
+// bytes. Error messages never echo the value.
+func parseEncryptionKey(raw string) ([]byte, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, fmt.Errorf("%w: COURIER_ENCRYPTION_KEY is required", ErrInvalid)
+	}
+	key, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		key, err = base64.RawStdEncoding.DecodeString(raw)
+	}
+	if err != nil || len(key) != EncryptionKeyBytes {
+		return nil, fmt.Errorf("%w: COURIER_ENCRYPTION_KEY must be %d bytes (base64)", ErrInvalid, EncryptionKeyBytes)
+	}
+	return key, nil
+}
+
+func parseBool(name, raw string, defaultVal bool) (bool, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return defaultVal, nil
+	}
+	switch strings.ToLower(s) {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, fmt.Errorf("%w: %s must be true or false", ErrInvalid, name)
+	}
 }
 
 // validateURL checks that raw is a URL with one of the allowed schemes and a
