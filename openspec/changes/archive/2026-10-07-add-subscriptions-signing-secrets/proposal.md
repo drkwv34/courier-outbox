@@ -1,7 +1,7 @@
 # Change: Subscription CRUD and signing secrets
 
 - **Id:** `add-subscriptions-signing-secrets`
-- **Status:** approved
+- **Status:** archived
 - **SRS requirements:** FR-SUB-001, FR-SUB-002, FR-SUB-003, FR-ERR-002, NFR-SEC-002
 
 ## Why
