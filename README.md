@@ -2,7 +2,7 @@
 
 Reliable outbound webhook delivery: signed payloads, retries with backoff, idempotency keys, and a dead-letter queue, written in Go.
 
-> **Status: persistence and API keys.** The scaffold now has a schema, `courier migrate`, `courier keys create`, Bearer auth on `/v1`, and `/healthz` + `/readyz`. Enqueue, delivery, signing, and the DLQ are **not implemented yet**. They land one OpenSpec change at a time (see [`openspec/specs/README.md`](openspec/specs/README.md)).
+> **Status: subscriptions.** The service has a schema, `courier migrate`, `courier keys create`, Bearer auth, `/healthz` + `/readyz`, and subscription CRUD with a signing secret shown once and encrypted at rest. Enqueue, delivery, payload signing, and the DLQ are **not implemented yet**. They land one OpenSpec change at a time (see [`openspec/specs/README.md`](openspec/specs/README.md)).
 
 ## Problem
 
@@ -52,9 +52,14 @@ docker compose up --build
 # migrate runs as a one-shot service and must exit 0 before api starts
 curl localhost:8080/healthz   # {"status":"ok"}
 curl localhost:8080/readyz    # {"status":"ready"}
-docker compose run --rm --no-deps api keys create --name local
+KEY=$(docker compose run --rm --no-deps api keys create --name local | awk '/key:/{print $2}')
 curl -i localhost:8080/v1/subscriptions
-# 401 {"code":"unauthorized",...}
+# 401 without Authorization
+curl -s -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d '{"target_url":"http://mock-subscriber:9090/hooks"}' \
+  localhost:8080/v1/subscriptions
+# 201 — copy signing_secret now; GET later omits it
+curl -s -H "Authorization: Bearer $KEY" localhost:8080/v1/subscriptions
 ```
 
 Services: `migrate` (one-shot), `api` (:8080), `db` Postgres (:5432), `redis` (:6379), and `mock-subscriber` (:9090, logs received webhooks).
@@ -62,7 +67,7 @@ Services: `migrate` (one-shot), `api` (:8080), `db` Postgres (:5432), `redis` (:
 Without Docker, against a running Postgres and Redis:
 
 ```bash
-export DATABASE_URL REDIS_URL COURIER_API_KEY_PEPPER   # see .env.example
+export DATABASE_URL REDIS_URL COURIER_API_KEY_PEPPER COURIER_ENCRYPTION_KEY   # see .env.example
 go run ./cmd/courier migrate
 go run ./cmd/courier keys create --name local
 go run ./cmd/courier serve
