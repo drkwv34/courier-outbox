@@ -21,7 +21,7 @@
 ## 5. Verification
 
 - [x] 5.1 `openspec validate add-event-enqueue-idempotency --strict` passes.
-- [ ] 5.2 `go test -race ./...`, `go test -race -tags=integration ./...`, and `golangci-lint run` are green.
+- [x] 5.2 `go test -race ./...`, `go test -race -tags=integration ./...`, and `golangci-lint run` are green.
 
 ## Workflow follow-up
 

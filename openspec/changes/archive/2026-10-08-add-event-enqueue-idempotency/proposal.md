@@ -1,7 +1,7 @@
 # Change: Transactional event enqueue and idempotency keys
 
 - **Id:** `add-event-enqueue-idempotency`
-- **Status:** approved
+- **Status:** archived
 - **SRS requirements:** FR-EVT-001, FR-EVT-002, FR-EVT-003, NFR-REL-002
 
 ## Why
