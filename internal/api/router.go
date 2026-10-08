@@ -26,6 +26,8 @@ type Deps struct {
 	Subscriptions SubscriptionStore
 	URLPolicy     domain.URLPolicy
 	Envelope      domain.Envelope
+	// Events is required to mount /v1/events.
+	Events EventStore
 	// Rand supplies entropy for secrets and nonces. nil means crypto/rand.
 	Rand io.Reader
 }
@@ -69,6 +71,13 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/{id}", h.get)
 			r.Patch("/{id}", h.patch)
 			r.Post("/{id}/disable", h.disable)
+		})
+	}
+	if d.Events != nil {
+		h := eventHandlers{logger: logger, store: d.Events}
+		v1.Route("/events", func(r chi.Router) {
+			r.Post("/", h.create)
+			r.Get("/{id}", h.get)
 		})
 	}
 	r.Mount("/v1", requireAPIKey(logger, d.Keys, d.Hasher)(v1))

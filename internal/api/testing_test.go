@@ -176,3 +176,72 @@ func (f *fakeSubs) ciphertext(id string) []byte {
 	defer f.mu.Unlock()
 	return append([]byte(nil), f.enc[id]...)
 }
+
+type fakeEvents struct {
+	mu   sync.Mutex
+	seq  int
+	byID map[string]domain.Event
+	dels map[string][]domain.Delivery
+	keys map[string]string
+	err  error
+}
+
+func (f *fakeEvents) EnqueueEvent(_ context.Context, e domain.Event) (domain.EnqueueResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return domain.EnqueueResult{}, f.err
+	}
+	if f.byID == nil {
+		f.byID = map[string]domain.Event{}
+		f.dels = map[string][]domain.Delivery{}
+		f.keys = map[string]string{}
+	}
+	k := e.APIKeyID + "\x00" + e.IdempotencyKey
+	if id, ok := f.keys[k]; ok {
+		return domain.EnqueueResult{EventID: id, DeliveryIDs: deliveryIDs(f.dels[id]), Replay: true}, nil
+	}
+	f.seq++
+	id := fmt.Sprintf("aaaaaaaa-bbbb-cccc-dddd-%012d", f.seq)
+	now := time.Now().UTC()
+	e.ID = id
+	e.CreatedAt = now
+	if e.OccurredAt.IsZero() {
+		e.OccurredAt = now
+	}
+	del := domain.Delivery{
+		ID:             fmt.Sprintf("bbbbbbbb-cccc-dddd-eeee-%012d", f.seq),
+		EventID:        id,
+		SubscriptionID: "11111111-2222-3333-4444-000000000001",
+		Status:         domain.DeliveryPending,
+		AttemptCount:   0,
+		NextAttemptAt:  now,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	f.byID[id] = e
+	f.dels[id] = []domain.Delivery{del}
+	f.keys[k] = id
+	return domain.EnqueueResult{EventID: id, DeliveryIDs: []string{del.ID}, Replay: false}, nil
+}
+
+func (f *fakeEvents) GetEvent(_ context.Context, apiKeyID, id string) (domain.Event, []domain.Delivery, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return domain.Event{}, nil, f.err
+	}
+	e, ok := f.byID[id]
+	if !ok || e.APIKeyID != apiKeyID {
+		return domain.Event{}, nil, domain.ErrNotFound
+	}
+	return e, append([]domain.Delivery(nil), f.dels[id]...), nil
+}
+
+func deliveryIDs(dels []domain.Delivery) []string {
+	out := make([]string, 0, len(dels))
+	for _, d := range dels {
+		out = append(out, d.ID)
+	}
+	return out
+}

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: courier-outbox
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Reliable outbound webhook delivery service.
 
@@ -11,7 +11,8 @@ info:
     SRS §4.2 and openspec/specs/.
 
     Every path under `/v1` requires `Authorization: Bearer <api_key>`.
-    Subscription CRUD is implemented. Enqueue, delivery, and DLQ are not.
+    Subscription CRUD and event enqueue are implemented. Delivery and DLQ
+    are not.
   license:
     name: MIT
 servers:
@@ -187,6 +188,75 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /v1/events:
+    post:
+      operationId: enqueueEvent
+      summary: Enqueue an event
+      description: |
+        Persists the event and one pending delivery per matching enabled
+        subscription in a single transaction. Reusing `idempotency_key`
+        for the same API key returns 200 with `Idempotent-Replay: true`
+        and the original ids. Request bodies larger than 256 KiB are 413.
+      tags: [events]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnqueueEventRequest"
+      responses:
+        "201":
+          description: Event created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnqueueEventResponse"
+        "200":
+          description: Idempotent replay of an existing event.
+          headers:
+            Idempotent-Replay:
+              required: true
+              schema:
+                type: string
+                enum: ["true"]
+              description: Always `true` on a replay.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnqueueEventResponse"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+  /v1/events/{id}:
+    parameters:
+      - $ref: "#/components/parameters/EventId"
+    get:
+      operationId: getEvent
+      summary: Get an event
+      description: |
+        Returns event metadata, payload, and delivery summaries for the
+        calling API key. A foreign or missing id is 404.
+      tags: [events]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The event owned by the caller.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   securitySchemes:
     bearerAuth:
@@ -205,6 +275,14 @@ components:
         type: string
         format: uuid
       description: Subscription id. Malformed values return 400, not 404.
+    EventId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Event id. Malformed values return 400, not 404.
   responses:
     Unauthorized:
       description: |
@@ -346,3 +424,80 @@ components:
           type: boolean
         rotate_secret:
           type: boolean
+    EnqueueEventRequest:
+      type: object
+      additionalProperties: false
+      required: [type, payload, idempotency_key]
+      properties:
+        type:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: '^[a-z0-9]+([._-][a-z0-9]+)*$'
+        payload:
+          type: object
+          additionalProperties: true
+          description: JSON object. The whole request body must be at most 256 KiB.
+        idempotency_key:
+          type: string
+          minLength: 1
+          maxLength: 128
+        occurred_at:
+          type: string
+          format: date-time
+          description: RFC 3339. Defaults to the server time when omitted.
+    EnqueueEventResponse:
+      type: object
+      required: [event_id, delivery_ids]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        delivery_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+    Event:
+      type: object
+      required: [id, type, payload, idempotency_key, occurred_at, created_at, deliveries]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        idempotency_key:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        deliveries:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliverySummary"
+    DeliverySummary:
+      type: object
+      required: [id, subscription_id, status, attempt_count, next_attempt_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        subscription_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, retrying, delivered, dead_lettered]
+        attempt_count:
+          type: integer
+          minimum: 0
+        next_attempt_at:
+          type: string
+          format: date-time

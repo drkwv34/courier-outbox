@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -45,4 +46,27 @@ const sqlStateUniqueViolation = "23505"
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == sqlStateUniqueViolation
+}
+
+// inTx runs fn in a single transaction. The transaction is rolled back on
+// error or panic and is never exposed outside this package.
+func (p *Postgres) inTx(ctx context.Context, fn func(pgx.Tx) error) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("store: begin tx: %w", err)
+	}
+	defer func() {
+		if rec := recover(); rec != nil {
+			_ = tx.Rollback(ctx)
+			panic(rec)
+		}
+	}()
+	if err := fn(tx); err != nil {
+		_ = tx.Rollback(ctx)
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("store: commit tx: %w", err)
+	}
+	return nil
 }
