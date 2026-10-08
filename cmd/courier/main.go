@@ -110,6 +110,7 @@ func serve() error {
 				{Name: "redis", Check: rdb.Ping},
 			},
 			Subscriptions: pg,
+			Events:        pg,
 			URLPolicy: domain.URLPolicy{
 				AllowHTTP:   cfg.AllowHTTPCallbacks,
 				ProtectSSRF: cfg.SSRFProtection,

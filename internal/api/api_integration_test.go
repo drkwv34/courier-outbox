@@ -88,6 +88,7 @@ func newEnv(t *testing.T, redisURL string) env {
 			{Name: "redis", Check: rdb.Ping},
 		},
 		Subscriptions: pg,
+		Events:        pg,
 		URLPolicy:     domain.URLPolicy{AllowHTTP: false, ProtectSSRF: true},
 		Envelope:      envelope,
 		Rand:          rand.Reader,
@@ -317,6 +318,12 @@ func TestSubscriptions_Lifecycle(t *testing.T) {
 
 func (e env) do(t *testing.T, method, path, bearer, body string) (int, []byte) {
 	t.Helper()
+	status, _, raw := e.doHeader(t, method, path, bearer, body)
+	return status, raw
+}
+
+func (e env) doHeader(t *testing.T, method, path, bearer, body string) (int, http.Header, []byte) {
+	t.Helper()
 	var rdr io.Reader = http.NoBody
 	if body != "" {
 		rdr = strings.NewReader(body)
@@ -340,7 +347,7 @@ func (e env) do(t *testing.T, method, path, bearer, body string) (int, []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return resp.StatusCode, raw
+	return resp.StatusCode, resp.Header.Clone(), raw
 }
 
 func storedSecret(t *testing.T, dsn, id string) []byte {
