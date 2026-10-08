@@ -2,7 +2,7 @@
 
 Reliable outbound webhook delivery: signed payloads, retries with backoff, idempotency keys, and a dead-letter queue, written in Go.
 
-> **Status: subscriptions.** The service has a schema, `courier migrate`, `courier keys create`, Bearer auth, `/healthz` + `/readyz`, and subscription CRUD with a signing secret shown once and encrypted at rest. Enqueue, delivery, payload signing, and the DLQ are **not implemented yet**. They land one OpenSpec change at a time (see [`openspec/specs/README.md`](openspec/specs/README.md)).
+> **Status: event enqueue.** The service has a schema, `courier migrate`, `courier keys create`, Bearer auth, `/healthz` + `/readyz`, subscription CRUD, and transactional `POST /v1/events` with idempotency keys. Delivery (worker, HMAC, retries) and the DLQ are **not implemented yet**. They land one OpenSpec change at a time (see [`openspec/specs/README.md`](openspec/specs/README.md)).
 
 ## Problem
 
@@ -14,7 +14,7 @@ Services that emit webhooks tend to reinvent the same fragile code: fire-and-for
 
 These are design goals. They are specified but not built yet.
 
-- **Transactional enqueue.** The event and its delivery rows commit together in Postgres (outbox pattern), so nothing accepted is ever lost.
+- **Transactional enqueue.** `POST /v1/events` commits the event and its pending delivery rows together in Postgres (outbox pattern), so nothing accepted is ever lost. Duplicate `idempotency_key` values for the same API key replay as `200` with `Idempotent-Replay: true`.
 - **Honest semantics.** Delivery is at-least-once, with a documented consumer contract, and never claims exactly-once.
 - **Verifiable.** Every POST is HMAC-SHA256 signed with a per-subscription secret.
 - **Operable.** It keeps an attempt log, a retry schedule of 1s → 5s → 25s → 2m → 10m, a queryable DLQ with replay, metrics, and health endpoints.
@@ -60,6 +60,11 @@ curl -s -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   localhost:8080/v1/subscriptions
 # 201 — copy signing_secret now; GET later omits it
 curl -s -H "Authorization: Bearer $KEY" localhost:8080/v1/subscriptions
+# Enqueue an event (201). Replay the same idempotency_key → 200 + Idempotent-Replay: true
+curl -i -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d '{"type":"order.created","payload":{"order_id":"1"},"idempotency_key":"enq-1"}' \
+  localhost:8080/v1/events
+curl -s -H "Authorization: Bearer $KEY" localhost:8080/v1/events/<event_id>
 ```
 
 Services: `migrate` (one-shot), `api` (:8080), `db` Postgres (:5432), `redis` (:6379), and `mock-subscriber` (:9090, logs received webhooks).
