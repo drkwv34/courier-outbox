@@ -158,9 +158,10 @@ func TestAuth_RealStore(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			status, body := e.get(t, "/v1/events", tt.bearer)
+			// /v1/deliveries is unrouted until the worker change; GET /v1/events is POST-only.
+			status, body := e.get(t, "/v1/deliveries", tt.bearer)
 			if status != tt.wantStatus || body["code"] != tt.wantCode {
-				t.Fatalf("GET /v1/events = %d %v, want %d code %s", status, body, tt.wantStatus, tt.wantCode)
+				t.Fatalf("GET /v1/deliveries = %d %v, want %d code %s", status, body, tt.wantStatus, tt.wantCode)
 			}
 		})
 	}
