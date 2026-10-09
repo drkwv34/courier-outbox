@@ -15,6 +15,11 @@ var (
 	ErrConflict = errors.New("conflict")
 	// ErrValidation means caller-supplied input is malformed.
 	ErrValidation = errors.New("validation failed")
+	// ErrInvalidTransition means a delivery status change is not allowed.
+	ErrInvalidTransition = errors.New("invalid transition")
+	// ErrLeaseLost means a fenced update matched no row (another worker
+	// holds the lease, or it expired and was reclaimed).
+	ErrLeaseLost = errors.New("lease lost")
 )
 
 // ValidationError carries the field that failed validation. It unwraps to

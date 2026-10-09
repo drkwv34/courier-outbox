@@ -10,6 +10,9 @@ const (
 	DeliveryDeadLettered DeliveryStatus = "dead_lettered"
 )
 
+// MaxAttempts is the last HTTP try before a delivery is dead-lettered.
+const MaxAttempts = 6
+
 // DeliveryStatus is the durable state of one event→subscription path.
 type DeliveryStatus string
 
@@ -23,6 +26,15 @@ func (s DeliveryStatus) Valid() bool {
 	}
 }
 
+// DefaultBackoff is the delay after failure counts 1..5 (FR-DEL-005).
+var DefaultBackoff = []time.Duration{
+	time.Second,
+	5 * time.Second,
+	25 * time.Second,
+	2 * time.Minute,
+	10 * time.Minute,
+}
+
 // Delivery is the path of one event to one subscription.
 type Delivery struct {
 	ID             string
@@ -31,6 +43,104 @@ type Delivery struct {
 	Status         DeliveryStatus
 	AttemptCount   int
 	NextAttemptAt  time.Time
+	LeaseOwner     string
+	LeaseUntil     time.Time
+	DeliveredAt    time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+}
+
+// DeliveryClaim is a row a worker may POST after a committed claim.
+type DeliveryClaim struct {
+	Delivery         Delivery
+	Payload          []byte
+	TargetURL        string
+	Headers          map[string]string
+	SigningSecretEnc []byte
+}
+
+// Attempt is one HTTP try against a subscriber. Append-only.
+type Attempt struct {
+	DeliveryID   string
+	StatusCode   *int
+	ErrorMessage *string
+	DurationMs   int
+	RequestID    string
+	CreatedAt    time.Time
+}
+
+// AttemptRecord is the input to persist one try and the resulting delivery state.
+type AttemptRecord struct {
+	DeliveryID   string
+	WorkerID     string
+	Status       DeliveryStatus
+	AttemptCount int
+	RetryDelay   time.Duration
+	StatusCode   *int
+	ErrorMessage *string
+	DurationMs   int
+	RequestID    string
+}
+
+// BackoffAfterFailure returns the delay until the next try after a failure
+// that leaves attemptCount (1-based) recorded. deadLetter is true at 6+.
+func BackoffAfterFailure(attemptCount int, schedule []time.Duration) (delay time.Duration, deadLetter bool) {
+	if attemptCount >= MaxAttempts {
+		return 0, true
+	}
+	if attemptCount < 1 {
+		return 0, false
+	}
+	if len(schedule) == 0 {
+		schedule = DefaultBackoff
+	}
+	idx := attemptCount - 1
+	if idx >= len(schedule) {
+		return schedule[len(schedule)-1], false
+	}
+	return schedule[idx], false
+}
+
+// OverrideBackoff repeats delay for every production retry slot. Used only
+// when tests inject COURIER_BACKOFF_MS.
+func OverrideBackoff(delay time.Duration) []time.Duration {
+	out := make([]time.Duration, len(DefaultBackoff))
+	for i := range out {
+		out[i] = delay
+	}
+	return out
+}
+
+func claimable(s DeliveryStatus) bool {
+	return s == DeliveryPending || s == DeliveryRetrying
+}
+
+// RecordSuccess increments attempt_count and marks the delivery delivered.
+func (d Delivery) RecordSuccess() (Delivery, error) {
+	if !claimable(d.Status) {
+		return Delivery{}, ErrInvalidTransition
+	}
+	d.AttemptCount++
+	d.Status = DeliveryDelivered
+	d.LeaseOwner = ""
+	d.LeaseUntil = time.Time{}
+	return d, nil
+}
+
+// RecordFailure increments attempt_count and either schedules a retry or
+// dead-letters. RetryDelay is 0 when dead-lettered.
+func (d Delivery) RecordFailure(schedule []time.Duration) (Delivery, time.Duration, error) {
+	if !claimable(d.Status) {
+		return Delivery{}, 0, ErrInvalidTransition
+	}
+	d.AttemptCount++
+	d.LeaseOwner = ""
+	d.LeaseUntil = time.Time{}
+	delay, dead := BackoffAfterFailure(d.AttemptCount, schedule)
+	if dead {
+		d.Status = DeliveryDeadLettered
+		return d, 0, nil
+	}
+	d.Status = DeliveryRetrying
+	return d, delay, nil
 }

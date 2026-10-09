@@ -2,7 +2,7 @@
 
 Reliable outbound webhook delivery: signed payloads, retries with backoff, idempotency keys, and a dead-letter queue, written in Go.
 
-> **Status: event enqueue.** The service has a schema, `courier migrate`, `courier keys create`, Bearer auth, `/healthz` + `/readyz`, subscription CRUD, and transactional `POST /v1/events` with idempotency keys. Delivery (worker, HMAC, retries) and the DLQ are **not implemented yet**. They land one OpenSpec change at a time (see [`openspec/specs/README.md`](openspec/specs/README.md)).
+> **Status: delivery worker.** The service has a schema, `courier migrate`, `courier keys create`, Bearer auth, `/healthz` + `/readyz`, subscription CRUD, transactional `POST /v1/events` with idempotency keys, and `courier worker`: SKIP LOCKED claims, v1 HMAC-signed POSTs, retries 1s → 5s → 25s → 2m → 10m, then `dead_lettered`. DLQ list/replay APIs are **not implemented yet** (see [`openspec/specs/README.md`](openspec/specs/README.md)). Delivery is **at-least-once**, never exactly-once.
 
 ## Problem
 
@@ -12,13 +12,11 @@ Services that emit webhooks tend to reinvent the same fragile code: fire-and-for
 
 <!-- TODO(readme): expand into the case study once delivery ships. -->
 
-These are design goals. They are specified but not built yet.
-
 - **Transactional enqueue.** `POST /v1/events` commits the event and its pending delivery rows together in Postgres (outbox pattern), so nothing accepted is ever lost. Duplicate `idempotency_key` values for the same API key replay as `200` with `Idempotent-Replay: true`.
-- **Honest semantics.** Delivery is at-least-once, with a documented consumer contract, and never claims exactly-once.
-- **Verifiable.** Every POST is HMAC-SHA256 signed with a per-subscription secret.
-- **Operable.** It keeps an attempt log, a retry schedule of 1s → 5s → 25s → 2m → 10m, a queryable DLQ with replay, metrics, and health endpoints.
-- **Safe by default.** SSRF guards check target URLs and dialed IPs, timeouts are strict, redirects are never followed, and signing secrets are encrypted at rest.
+- **Honest semantics.** Delivery is at-least-once, with a documented consumer contract, and never claims exactly-once. A crash after a successful POST and before the attempt is recorded can cause a duplicate send; consumers must dedupe.
+- **Verifiable.** Every POST is HMAC-SHA256 signed with a per-subscription secret (scheme below).
+- **Operable.** Each try is a `delivery_attempts` row. Failures retry 1s → 5s → 25s → 2m → 10m, then `dead_lettered`. DLQ query/replay lands later. Health endpoints are live.
+- **Safe by default.** Timeouts are strict (5s total), redirects are never followed, and signing secrets are encrypted at rest. Dial-time SSRF blocking is still limited: URL policy applies at subscription write.
 
 ## Stack
 
@@ -67,7 +65,7 @@ curl -i -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
 curl -s -H "Authorization: Bearer $KEY" localhost:8080/v1/events/<event_id>
 ```
 
-Services: `migrate` (one-shot), `api` (:8080), `db` Postgres (:5432), `redis` (:6379), and `mock-subscriber` (:9090, logs received webhooks).
+Services: `migrate` (one-shot), `api` (:8080), `worker` (same image, `courier worker`), `db` Postgres (:5432), `redis` (:6379), and `mock-subscriber` (:9090, logs received webhooks including signature headers). After enqueue, the worker should POST a signed body to the mock within a few seconds.
 
 Without Docker, against a running Postgres and Redis:
 
@@ -76,6 +74,8 @@ export DATABASE_URL REDIS_URL COURIER_API_KEY_PEPPER COURIER_ENCRYPTION_KEY   # 
 go run ./cmd/courier migrate
 go run ./cmd/courier keys create --name local
 go run ./cmd/courier serve
+# in another process:
+go run ./cmd/courier worker
 ```
 
 ## Tests and CI
@@ -89,18 +89,33 @@ docker compose config -q
 
 CI (GitHub Actions) runs lint, race-enabled unit tests, race-enabled integration tests (Postgres 16 + Redis 7 via testcontainers), binary build, compose validation, and image build.
 
+## Worker and signature scheme
+
+`courier worker` polls Postgres for due rows (`status` in `pending|retrying`, `next_attempt_at <= now()`, lease null or expired), claims them with `FOR UPDATE SKIP LOCKED`, and **commits before** the HTTP POST. Default lease is 30s (`WORKER_LEASE_TTL`). If the process dies, another worker reclaims after `lease_until`.
+
+Each POST:
+
+| Header | Value |
+|--------|--------|
+| `X-Courier-Idempotency-Key` | Event id (consumer dedupe key) |
+| `X-Courier-Timestamp` | Unix seconds |
+| `X-Courier-Signature` | `v1=<hex>` HMAC-SHA256 of `{timestamp}.{raw_body_bytes}` with the subscription signing secret |
+| `User-Agent` | `courier-outbox/1.0` |
+
+Timeouts: dial 2s, TLS handshake 2s, total 5s. At most 8 KiB of the response is read. Redirects are not followed (3xx is a failed attempt). Non-2xx / timeout / network error increments `attempt_count` and schedules the next try; the sixth failure marks `dead_lettered`.
+
+`COURIER_BACKOFF_MS` is a **test-only** override that replaces every production delay with that many milliseconds. Do not set it in real environments.
+
 ## Consumer responsibilities
 
-<!-- TODO(readme): finalize with the delivery change (FR-DOC-001). -->
-
-1. Verify `X-Courier-Signature` and reject timestamps more than 5 minutes old.
-2. Expect duplicates and dedupe on `X-Courier-Idempotency-Key`.
+1. Verify `X-Courier-Signature` (`v1=` + hex HMAC-SHA256 over `{timestamp}.{raw body}`) and reject timestamps more than **5 minutes** from your clock.
+2. Treat delivery as **at-least-once**. Dedupe on `X-Courier-Idempotency-Key` (the event id). Courier does **not** provide exactly-once delivery.
 3. Return 2xx only after you have durably accepted the event.
-4. Respond quickly, and process heavy work asynchronously.
+4. Respond within the 5s budget; process heavy work asynchronously.
 
 ## Trade-offs
 
-<!-- TODO(readme): at-least-once vs exactly-once, polling vs LISTEN/NOTIFY, Redis optionality. -->
+Courier chooses at-least-once over exactly-once: the claim transaction never stays open across the subscriber POST, so a crash between a 2xx and the record step can send the event again. Consumers must verify signatures and dedupe. Workers poll `next_attempt_at` rather than LISTEN/NOTIFY. Redis is not the source of truth for leases.
 
 ## Contributing
 

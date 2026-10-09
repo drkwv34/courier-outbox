@@ -37,7 +37,7 @@ func TestRouter(t *testing.T) {
 		{name: "v1 root without key", method: http.MethodGet, path: "/v1", wantStatus: http.StatusUnauthorized, wantKey: "code", wantValue: "unauthorized"},
 		{name: "v1 path without key", method: http.MethodPost, path: "/v1/events", wantStatus: http.StatusUnauthorized, wantKey: "code", wantValue: "unauthorized"},
 		{name: "v1 with bad key", method: http.MethodGet, path: "/v1/subscriptions", auth: "Bearer co_aaaaaaaa_nope", wantStatus: http.StatusUnauthorized, wantKey: "code", wantValue: "unauthorized"},
-		{name: "v1 with valid key reaches empty api", method: http.MethodGet, path: "/v1/deliveries", auth: "Bearer " + valid, wantStatus: http.StatusNotFound, wantKey: "code", wantValue: "not_found"},
+		{name: "v1 with valid key reaches empty api", method: http.MethodGet, path: "/v1/__probe", auth: "Bearer " + valid, wantStatus: http.StatusNotFound, wantKey: "code", wantValue: "not_found"},
 	}
 
 	for _, tt := range tests {

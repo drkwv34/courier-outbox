@@ -10,7 +10,9 @@ import (
 	"log/slog"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // ErrInvalid is wrapped by every validation failure returned from Load.
@@ -21,6 +23,11 @@ const (
 	MinPepperBytes = 32
 	// EncryptionKeyBytes is the AES-256 key length of COURIER_ENCRYPTION_KEY.
 	EncryptionKeyBytes = 32
+
+	defaultWorkerConcurrency = 4
+	defaultWorkerClaimLimit  = 8
+	defaultWorkerLeaseTTL    = 30 * time.Second
+	defaultWorkerPoll        = 500 * time.Millisecond
 )
 
 // Config is the validated runtime configuration.
@@ -38,16 +45,36 @@ type Config struct {
 	SSRFProtection bool
 	// AllowHTTPCallbacks permits http:// target URLs. Default false.
 	AllowHTTPCallbacks bool
+
+	// WorkerID is the lease_owner string. Empty means the process will
+	// fill hostname-pid at startup.
+	WorkerID string
+	// WorkerConcurrency is the number of claim/send goroutines.
+	WorkerConcurrency int
+	// WorkerClaimLimit is FOR UPDATE SKIP LOCKED LIMIT per claim.
+	WorkerClaimLimit int
+	// WorkerLeaseTTL is how long a claim is exclusive (default 30s).
+	WorkerLeaseTTL time.Duration
+	// WorkerPollInterval is the wait after an empty claim.
+	WorkerPollInterval time.Duration
+	// BackoffOverride, when non-nil, replaces every production retry delay.
+	// It is populated only from COURIER_BACKOFF_MS and is test-only.
+	BackoffOverride *time.Duration
 }
 
 // Load reads configuration using getenv (usually os.Getenv) and validates it.
 // All problems are reported together so operators can fix them in one pass.
 func Load(getenv func(string) string) (Config, error) {
 	cfg := Config{
-		HTTPAddr:     valueOr(getenv("HTTP_ADDR"), ":8080"),
-		DatabaseURL:  strings.TrimSpace(getenv("DATABASE_URL")),
-		RedisURL:     strings.TrimSpace(getenv("REDIS_URL")),
-		APIKeyPepper: []byte(getenv("COURIER_API_KEY_PEPPER")),
+		HTTPAddr:           valueOr(getenv("HTTP_ADDR"), ":8080"),
+		DatabaseURL:        strings.TrimSpace(getenv("DATABASE_URL")),
+		RedisURL:           strings.TrimSpace(getenv("REDIS_URL")),
+		APIKeyPepper:       []byte(getenv("COURIER_API_KEY_PEPPER")),
+		WorkerID:           strings.TrimSpace(getenv("WORKER_ID")),
+		WorkerConcurrency:  defaultWorkerConcurrency,
+		WorkerClaimLimit:   defaultWorkerClaimLimit,
+		WorkerLeaseTTL:     defaultWorkerLeaseTTL,
+		WorkerPollInterval: defaultWorkerPoll,
 	}
 
 	var errs []error
@@ -89,6 +116,36 @@ func Load(getenv func(string) string) (Config, error) {
 		errs = append(errs, err)
 	}
 	cfg.AllowHTTPCallbacks = allowHTTP
+
+	conc, err := parsePositiveInt("WORKER_CONCURRENCY", getenv("WORKER_CONCURRENCY"), defaultWorkerConcurrency)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	cfg.WorkerConcurrency = conc
+
+	limit, err := parsePositiveInt("WORKER_CLAIM_LIMIT", getenv("WORKER_CLAIM_LIMIT"), defaultWorkerClaimLimit)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	cfg.WorkerClaimLimit = limit
+
+	lease, err := parseDuration("WORKER_LEASE_TTL", getenv("WORKER_LEASE_TTL"), defaultWorkerLeaseTTL)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	cfg.WorkerLeaseTTL = lease
+
+	poll, err := parseDuration("WORKER_POLL_INTERVAL", getenv("WORKER_POLL_INTERVAL"), defaultWorkerPoll)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	cfg.WorkerPollInterval = poll
+
+	override, err := parseOptionalBackoffMS(getenv("COURIER_BACKOFF_MS"))
+	if err != nil {
+		errs = append(errs, err)
+	}
+	cfg.BackoffOverride = override
 
 	if len(errs) > 0 {
 		return Config{}, errors.Join(errs...)
@@ -162,4 +219,42 @@ func valueOr(v, fallback string) string {
 		return fallback
 	}
 	return v
+}
+
+func parsePositiveInt(name, raw string, defaultVal int) (int, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return defaultVal, nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("%w: %s must be a positive integer", ErrInvalid, name)
+	}
+	return n, nil
+}
+
+func parseDuration(name, raw string, defaultVal time.Duration) (time.Duration, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return defaultVal, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("%w: %s must be a positive duration", ErrInvalid, name)
+	}
+	return d, nil
+}
+
+// parseOptionalBackoffMS reads COURIER_BACKOFF_MS (test-only). Empty is unset.
+func parseOptionalBackoffMS(raw string) (*time.Duration, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return nil, nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 {
+		return nil, fmt.Errorf("%w: COURIER_BACKOFF_MS must be a positive integer (milliseconds, test-only)", ErrInvalid)
+	}
+	d := time.Duration(n) * time.Millisecond
+	return &d, nil
 }

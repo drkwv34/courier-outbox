@@ -2,6 +2,5 @@
 // FOR UPDATE SKIP LOCKED, sign, POST to subscribers through the hardened
 // outbound HTTP client, record attempts, and schedule retries or dead-letter.
 //
-// Nothing is implemented yet; see docs/architecture/external-integrations.md
-// and the delivery capability in openspec/specs/.
+// A database transaction is never held across an outbound HTTP call.
 package worker

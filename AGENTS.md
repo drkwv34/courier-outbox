@@ -12,7 +12,7 @@ Guide for coding agents (Cursor / Composer) and humans working on courier-outbox
 ## Layout
 
 ```
-cmd/courier/            composition root (serve, migrate, keys create; worker later)
+cmd/courier/            composition root (serve, migrate, keys create, worker)
 cmd/mock-subscriber/    local demo webhook target (never deployed)
 internal/api/           HTTP transport + error→HTTP mapping (only place that knows status codes)
 internal/config/        env → validated Config

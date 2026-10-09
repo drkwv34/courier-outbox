@@ -1,7 +1,7 @@
 // Command mock-subscriber is a local-only webhook target for Docker Compose
-// demos and smoke tests. It logs each request and replies with a fixed
-// status. It does not verify signatures yet; that arrives with the
-// signing scheme.
+// demos and smoke tests. It logs each request (including signature headers)
+// and replies with a fixed status. It does not verify HMAC; integration
+// tests use httptest servers that do.
 package main
 
 import (
