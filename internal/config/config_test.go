@@ -7,6 +7,7 @@ import (
 	"maps"
 	"strings"
 	"testing"
+	"time"
 )
 
 const testPepper = "0123456789abcdef0123456789abcdef"
@@ -64,6 +65,11 @@ func TestLoad(t *testing.T) {
 		{name: "invalid encryption key encoding", env: with(map[string]string{"COURIER_ENCRYPTION_KEY": "%%%not-base64%%%"}), wantErrIn: "COURIER_ENCRYPTION_KEY"},
 		{name: "invalid ssrf bool", env: with(map[string]string{"SSRF_PROTECTION": "yes"}), wantErrIn: "SSRF_PROTECTION"},
 		{name: "invalid http bool", env: with(map[string]string{"ALLOW_HTTP_CALLBACKS": "1"}), wantErrIn: "ALLOW_HTTP_CALLBACKS"},
+		{name: "bad worker concurrency", env: with(map[string]string{"WORKER_CONCURRENCY": "0"}), wantErrIn: "WORKER_CONCURRENCY"},
+		{name: "bad claim limit", env: with(map[string]string{"WORKER_CLAIM_LIMIT": "-1"}), wantErrIn: "WORKER_CLAIM_LIMIT"},
+		{name: "bad lease ttl", env: with(map[string]string{"WORKER_LEASE_TTL": "forever"}), wantErrIn: "WORKER_LEASE_TTL"},
+		{name: "bad poll interval", env: with(map[string]string{"WORKER_POLL_INTERVAL": "0s"}), wantErrIn: "WORKER_POLL_INTERVAL"},
+		{name: "bad backoff ms", env: with(map[string]string{"COURIER_BACKOFF_MS": "0"}), wantErrIn: "COURIER_BACKOFF_MS"},
 	}
 
 	for _, tt := range tests {
@@ -96,6 +102,39 @@ func TestLoad(t *testing.T) {
 				t.Fatalf("EncryptionKey length = %d, want %d", len(cfg.EncryptionKey), EncryptionKeyBytes)
 			}
 		})
+	}
+}
+
+func TestLoad_WorkerDefaultsAndOverride(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := Load(envFrom(baseEnv()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.WorkerConcurrency != 4 || cfg.WorkerClaimLimit != 8 || cfg.WorkerLeaseTTL != 30*time.Second || cfg.WorkerPollInterval != 500*time.Millisecond {
+		t.Fatalf("defaults conc=%d limit=%d lease=%s poll=%s", cfg.WorkerConcurrency, cfg.WorkerClaimLimit, cfg.WorkerLeaseTTL, cfg.WorkerPollInterval)
+	}
+	if cfg.BackoffOverride != nil {
+		t.Fatalf("BackoffOverride = %v, want nil", cfg.BackoffOverride)
+	}
+
+	cfg, err = Load(envFrom(with(map[string]string{
+		"WORKER_ID":            "w-1",
+		"WORKER_CONCURRENCY":   "2",
+		"WORKER_CLAIM_LIMIT":   "3",
+		"WORKER_LEASE_TTL":     "15s",
+		"WORKER_POLL_INTERVAL": "100ms",
+		"COURIER_BACKOFF_MS":   "10",
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.WorkerID != "w-1" || cfg.WorkerConcurrency != 2 || cfg.WorkerClaimLimit != 3 || cfg.WorkerLeaseTTL != 15*time.Second || cfg.WorkerPollInterval != 100*time.Millisecond {
+		t.Fatalf("explicit = %+v", cfg)
+	}
+	if cfg.BackoffOverride == nil || *cfg.BackoffOverride != 10*time.Millisecond {
+		t.Fatalf("BackoffOverride = %v", cfg.BackoffOverride)
 	}
 }
 
