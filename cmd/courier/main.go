@@ -1,7 +1,6 @@
 // Command courier is the single courier-outbox binary.
 //
-// Subcommands (SRS §4.3): serve, migrate, keys create. The worker arrives
-// with the delivery change.
+// Subcommands (SRS §4.3): serve, migrate, keys create, worker.
 package main
 
 import (
@@ -29,7 +28,8 @@ const usage = `usage: courier <command>
 commands:
   serve                     run the HTTP API (default)
   migrate                   apply pending database migrations
-  keys create --name <name> create an API key and print it once`
+  keys create --name <name> create an API key and print it once
+  worker                    claim, sign, and deliver due webhooks`
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -51,6 +51,8 @@ func run(args []string) error {
 		return migrate()
 	case "keys":
 		return keys(args[1:])
+	case "worker":
+		return runWorker()
 	case "-h", "--help", "help":
 		fmt.Println(usage)
 		return nil
