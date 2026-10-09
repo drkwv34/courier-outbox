@@ -1,7 +1,7 @@
 # Change: Delivery worker with HMAC signing and retries
 
 - **Id:** `add-delivery-worker-signing-retries`
-- **Status:** approved
+- **Status:** archived
 - **SRS requirements:** FR-DEL-001, FR-DEL-002, FR-DEL-003, FR-DEL-004, FR-DEL-005, FR-DEL-006, FR-DEL-007, FR-DOC-001, NFR-REL-001, NFR-SEC-002 (signature goldens), NFR-OBS-001
 
 ## Why
