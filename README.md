@@ -2,7 +2,7 @@
 
 Reliable outbound webhook delivery: signed payloads, retries with backoff, idempotency keys, and a dead-letter queue, written in Go.
 
-> **Status: delivery worker.** The service has a schema, `courier migrate`, `courier keys create`, Bearer auth, `/healthz` + `/readyz`, subscription CRUD, transactional `POST /v1/events` with idempotency keys, and `courier worker`: SKIP LOCKED claims, v1 HMAC-signed POSTs, retries 1s → 5s → 25s → 2m → 10m, then `dead_lettered`. DLQ list/replay APIs are **not implemented yet** (see [`openspec/specs/README.md`](openspec/specs/README.md)). Delivery is **at-least-once**, never exactly-once.
+> **Status: DLQ list and replay.** The service has a schema, `courier migrate`, `courier keys create`, Bearer auth, `/healthz` + `/readyz`, subscription CRUD, transactional `POST /v1/events` with idempotency keys, and `courier worker`: SKIP LOCKED claims, v1 HMAC-signed POSTs, retries 1s → 5s → 25s → 2m → 10m, then `dead_lettered`. Operators can list deliveries (`GET /v1/deliveries`, including `status=dead_lettered`), inspect attempt history (`GET /v1/deliveries/:id`), and replay a dead letter (`POST /v1/deliveries/:id/replay`). Delivery is **at-least-once**, never exactly-once.
 
 ## Problem
 
@@ -15,7 +15,7 @@ Services that emit webhooks tend to reinvent the same fragile code: fire-and-for
 - **Transactional enqueue.** `POST /v1/events` commits the event and its pending delivery rows together in Postgres (outbox pattern), so nothing accepted is ever lost. Duplicate `idempotency_key` values for the same API key replay as `200` with `Idempotent-Replay: true`.
 - **Honest semantics.** Delivery is at-least-once, with a documented consumer contract, and never claims exactly-once. A crash after a successful POST and before the attempt is recorded can cause a duplicate send; consumers must dedupe.
 - **Verifiable.** Every POST is HMAC-SHA256 signed with a per-subscription secret (scheme below).
-- **Operable.** Each try is a `delivery_attempts` row. Failures retry 1s → 5s → 25s → 2m → 10m, then `dead_lettered`. DLQ query/replay lands later. Health endpoints are live.
+- **Operable.** Each try is a `delivery_attempts` row. Failures retry 1s → 5s → 25s → 2m → 10m, then `dead_lettered`. Operators list the DLQ, inspect attempts, and replay. Health endpoints are live.
 - **Safe by default.** Timeouts are strict (5s total), redirects are never followed, and signing secrets are encrypted at rest. Dial-time SSRF blocking is still limited: URL policy applies at subscription write.
 
 ## Stack
@@ -63,6 +63,10 @@ curl -i -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   -d '{"type":"order.created","payload":{"order_id":"1"},"idempotency_key":"enq-1"}' \
   localhost:8080/v1/events
 curl -s -H "Authorization: Bearer $KEY" localhost:8080/v1/events/<event_id>
+# After retries exhaust, list dead letters and replay one:
+curl -s -H "Authorization: Bearer $KEY" 'localhost:8080/v1/deliveries?status=dead_lettered'
+curl -s -H "Authorization: Bearer $KEY" localhost:8080/v1/deliveries/<delivery_id>
+curl -i -X POST -H "Authorization: Bearer $KEY" localhost:8080/v1/deliveries/<delivery_id>/replay
 ```
 
 Services: `migrate` (one-shot), `api` (:8080), `worker` (same image, `courier worker`), `db` Postgres (:5432), `redis` (:6379), and `mock-subscriber` (:9090, logs received webhooks including signature headers). After enqueue, the worker should POST a signed body to the mock within a few seconds.
@@ -112,6 +116,8 @@ Timeouts: dial 2s, TLS handshake 2s, total 5s. At most 8 KiB of the response is 
 2. Treat delivery as **at-least-once**. Dedupe on `X-Courier-Idempotency-Key` (the event id). Courier does **not** provide exactly-once delivery.
 3. Return 2xx only after you have durably accepted the event.
 4. Respond within the 5s budget; process heavy work asynchronously.
+
+Operators: deliveries that still fail after six attempts are `dead_lettered`. List them with `GET /v1/deliveries?status=dead_lettered`, inspect `GET /v1/deliveries/:id` (append-only attempts), and `POST /v1/deliveries/:id/replay` to put a dead letter back to `pending` without erasing history. Replay of any other status is `409 invalid_transition`.
 
 ## Trade-offs
 
