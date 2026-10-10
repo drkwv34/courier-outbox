@@ -93,3 +93,86 @@ func TestRecord_InvalidTransition(t *testing.T) {
 		}
 	}
 }
+
+func TestReplay(t *testing.T) {
+	t.Parallel()
+
+	d := Delivery{
+		ID:            "d1",
+		Status:        DeliveryDeadLettered,
+		AttemptCount:  6,
+		LeaseOwner:    "stale",
+		LeaseUntil:    time.Now(),
+		NextAttemptAt: time.Now().Add(time.Hour),
+	}
+	got, err := d.Replay()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != DeliveryPending {
+		t.Fatalf("status = %s", got.Status)
+	}
+	if got.AttemptCount != 6 {
+		t.Fatalf("attempt_count = %d, want 6", got.AttemptCount)
+	}
+	if got.LeaseOwner != "" || !got.LeaseUntil.IsZero() {
+		t.Fatalf("lease not cleared: %+v", got)
+	}
+	if !got.NextAttemptAt.IsZero() {
+		t.Fatal("next_attempt_at should be zero for the store to apply now()")
+	}
+}
+
+func TestReplay_InvalidTransition(t *testing.T) {
+	t.Parallel()
+
+	for _, status := range []DeliveryStatus{DeliveryPending, DeliveryRetrying, DeliveryDelivered} {
+		d := Delivery{Status: status, AttemptCount: 2}
+		if _, err := d.Replay(); !errors.Is(err, ErrInvalidTransition) {
+			t.Fatalf("replay from %s: %v", status, err)
+		}
+	}
+}
+
+func TestParseDeliveryID(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		in      string
+		wantErr bool
+	}{
+		{name: "uuid", in: "11111111-2222-3333-4444-555555555555"},
+		{name: "empty", in: "", wantErr: true},
+		{name: "not uuid", in: "not-a-uuid", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ParseDeliveryID(tt.in)
+			if tt.wantErr {
+				if !errors.Is(err, ErrValidation) {
+					t.Fatalf("error = %v, want ErrValidation", err)
+				}
+				return
+			}
+			if err != nil || got != tt.in {
+				t.Fatalf("ParseDeliveryID(%q) = %q, %v", tt.in, got, err)
+			}
+		})
+	}
+}
+
+func TestDeliveryFilter_LimitOrDefault(t *testing.T) {
+	t.Parallel()
+
+	if got := (DeliveryFilter{}).LimitOrDefault(); got != DefaultDeliveryLimit {
+		t.Fatalf("empty = %d", got)
+	}
+	if got := (DeliveryFilter{Limit: 10}).LimitOrDefault(); got != 10 {
+		t.Fatalf("10 = %d", got)
+	}
+	if got := (DeliveryFilter{Limit: MaxDeliveryLimit + 1}).LimitOrDefault(); got != MaxDeliveryLimit {
+		t.Fatalf("over max = %d", got)
+	}
+}

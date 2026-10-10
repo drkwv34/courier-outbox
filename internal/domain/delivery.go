@@ -10,8 +10,14 @@ const (
 	DeliveryDeadLettered DeliveryStatus = "dead_lettered"
 )
 
-// MaxAttempts is the last HTTP try before a delivery is dead-lettered.
-const MaxAttempts = 6
+const (
+	// MaxAttempts is the last HTTP try before a delivery is dead-lettered.
+	MaxAttempts = 6
+	// DefaultDeliveryLimit is the list page size when the caller omits limit.
+	DefaultDeliveryLimit = 50
+	// MaxDeliveryLimit is the maximum accepted list page size.
+	MaxDeliveryLimit = 100
+)
 
 // DeliveryStatus is the durable state of one event→subscription path.
 type DeliveryStatus string
@@ -82,6 +88,39 @@ type AttemptRecord struct {
 	RequestID    string
 }
 
+// DeliveryView is a delivery plus the parent event type (no payload).
+type DeliveryView struct {
+	Delivery
+	EventType string
+}
+
+// DeliveryFilter selects a page of deliveries for one API key.
+type DeliveryFilter struct {
+	Status         DeliveryStatus
+	SubscriptionID string
+	EventType      string
+	CreatedAfter   *time.Time
+	CreatedBefore  *time.Time
+	Limit          int
+	Offset         int
+}
+
+// DeliveryPage is one page of a delivery list.
+type DeliveryPage struct {
+	Items  []DeliveryView
+	Total  int
+	Limit  int
+	Offset int
+}
+
+// ParseDeliveryID checks that s is a UUID string.
+func ParseDeliveryID(s string) (string, error) {
+	if !subscriptionIDRe.MatchString(s) {
+		return "", &ValidationError{Field: "id", Reason: "must be a uuid"}
+	}
+	return s, nil
+}
+
 // BackoffAfterFailure returns the delay until the next try after a failure
 // that leaves attemptCount (1-based) recorded. deadLetter is true at 6+.
 func BackoffAfterFailure(attemptCount int, schedule []time.Duration) (delay time.Duration, deadLetter bool) {
@@ -143,4 +182,29 @@ func (d Delivery) RecordFailure(schedule []time.Duration) (Delivery, time.Durati
 	}
 	d.Status = DeliveryRetrying
 	return d, delay, nil
+}
+
+// Replay returns a pending copy of a dead-lettered delivery. AttemptCount is
+// unchanged. NextAttemptAt is left zero; the store applies the database clock.
+func (d Delivery) Replay() (Delivery, error) {
+	if d.Status != DeliveryDeadLettered {
+		return Delivery{}, ErrInvalidTransition
+	}
+	d.Status = DeliveryPending
+	d.LeaseOwner = ""
+	d.LeaseUntil = time.Time{}
+	d.DeliveredAt = time.Time{}
+	d.NextAttemptAt = time.Time{}
+	return d, nil
+}
+
+// LimitOrDefault returns a positive page size, capped at MaxDeliveryLimit.
+func (f DeliveryFilter) LimitOrDefault() int {
+	if f.Limit < 1 {
+		return DefaultDeliveryLimit
+	}
+	if f.Limit > MaxDeliveryLimit {
+		return MaxDeliveryLimit
+	}
+	return f.Limit
 }
