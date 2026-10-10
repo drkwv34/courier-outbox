@@ -30,6 +30,8 @@ func writeDomainError(w http.ResponseWriter, logger *slog.Logger, r *http.Reques
 		writeError(w, logger, http.StatusNotFound, "not_found", "resource not found")
 	case errors.Is(err, domain.ErrConflict):
 		writeError(w, logger, http.StatusConflict, "conflict", "conflict")
+	case errors.Is(err, domain.ErrInvalidTransition):
+		writeError(w, logger, http.StatusConflict, "invalid_transition", "delivery is not dead_lettered")
 	case errors.As(err, &syn), errors.As(err, &typ), errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF), isUnknownJSONField(err):
 		msg := "invalid json"
 		if isUnknownJSONField(err) {

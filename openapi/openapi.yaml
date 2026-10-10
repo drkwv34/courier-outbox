@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: courier-outbox
-  version: 0.3.0
+  version: 0.4.0
   description: |
     Reliable outbound webhook delivery service.
 
@@ -11,8 +11,8 @@ info:
     SRS §4.2 and openspec/specs/.
 
     Every path under `/v1` requires `Authorization: Bearer <api_key>`.
-    Subscription CRUD and event enqueue are implemented. Delivery and DLQ
-    are not.
+    Subscription CRUD, event enqueue, delivery list/detail, and DLQ replay
+    are implemented.
   license:
     name: MIT
 servers:
@@ -257,6 +257,125 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /v1/deliveries:
+    get:
+      operationId: listDeliveries
+      summary: List deliveries
+      description: |
+        Returns deliveries owned by the authenticated API key. Filter with
+        `status` (including `dead_lettered`), `subscription_id`, event `type`,
+        `created_after`, and `created_before`. Paginate with `limit` (default
+        50, max 100) and `offset`. Signing secrets and event payloads are
+        never included.
+      tags: [deliveries]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/DeliveryStatus"
+        - name: subscription_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: type
+          in: query
+          description: Event type of the parent event.
+          schema:
+            type: string
+        - name: created_after
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Inclusive lower bound on delivery `created_at` (RFC 3339).
+        - name: created_before
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Exclusive upper bound on delivery `created_at` (RFC 3339).
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: A page of deliveries, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryList"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/deliveries/{id}:
+    parameters:
+      - $ref: "#/components/parameters/DeliveryId"
+    get:
+      operationId: getDelivery
+      summary: Get a delivery and its attempt history
+      description: |
+        Returns the delivery owned by the calling API key and its append-only
+        attempts oldest to newest. A foreign or missing id is 404. The event
+        payload and signing secret are omitted.
+      tags: [deliveries]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The delivery and its attempts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDetail"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/deliveries/{id}/replay:
+    parameters:
+      - $ref: "#/components/parameters/DeliveryId"
+    post:
+      operationId: replayDelivery
+      summary: Replay a dead-lettered delivery
+      description: |
+        Allowed only when the delivery is `dead_lettered`. Sets status to
+        `pending`, `next_attempt_at` to now, and clears the lease. Does not
+        reset `attempt_count` or delete attempt rows. Other statuses are 409
+        `invalid_transition`.
+      tags: [deliveries]
+      security:
+        - bearerAuth: []
+      responses:
+        "202":
+          description: Delivery reset to pending for the worker to claim.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Delivery"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/InvalidTransition"
 components:
   securitySchemes:
     bearerAuth:
@@ -283,6 +402,14 @@ components:
         type: string
         format: uuid
       description: Event id. Malformed values return 400, not 404.
+    DeliveryId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Delivery id. Malformed values return 400, not 404.
   responses:
     Unauthorized:
       description: |
@@ -327,6 +454,15 @@ components:
           example:
             code: payload_too_large
             message: request body too large
+    InvalidTransition:
+      description: The delivery is not in a state that allows this operation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: invalid_transition
+            message: delivery is not dead_lettered
   schemas:
     Error:
       type: object
@@ -493,11 +629,87 @@ components:
           type: string
           format: uuid
         status:
-          type: string
-          enum: [pending, retrying, delivered, dead_lettered]
+          $ref: "#/components/schemas/DeliveryStatus"
         attempt_count:
           type: integer
           minimum: 0
         next_attempt_at:
           type: string
           format: date-time
+    DeliveryStatus:
+      type: string
+      enum: [pending, retrying, delivered, dead_lettered]
+    Delivery:
+      type: object
+      required: [id, event_id, subscription_id, event_type, status, attempt_count, next_attempt_at, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        subscription_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        status:
+          $ref: "#/components/schemas/DeliveryStatus"
+        attempt_count:
+          type: integer
+          minimum: 0
+        next_attempt_at:
+          type: string
+          format: date-time
+        delivered_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    DeliveryAttempt:
+      type: object
+      required: [duration_ms, request_id, created_at]
+      properties:
+        status_code:
+          type: integer
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        duration_ms:
+          type: integer
+          minimum: 0
+        request_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    DeliveryDetail:
+      allOf:
+        - $ref: "#/components/schemas/Delivery"
+        - type: object
+          required: [attempts]
+          properties:
+            attempts:
+              type: array
+              items:
+                $ref: "#/components/schemas/DeliveryAttempt"
+    DeliveryList:
+      type: object
+      required: [items, limit, offset, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Delivery"
+        limit:
+          type: integer
+        offset:
+          type: integer
+        total:
+          type: integer

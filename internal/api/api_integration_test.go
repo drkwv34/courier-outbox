@@ -56,6 +56,11 @@ type env struct {
 
 func newEnv(t *testing.T, redisURL string) env {
 	t.Helper()
+	return newEnvPolicy(t, redisURL, domain.URLPolicy{AllowHTTP: false, ProtectSSRF: true})
+}
+
+func newEnvPolicy(t *testing.T, redisURL string, policy domain.URLPolicy) env {
+	t.Helper()
 	dsn := storetest.FreshDatabase(t, pgServer.URL)
 	if _, err := store.Migrate(t.Context(), dsn); err != nil {
 		t.Fatalf("Migrate: %v", err)
@@ -89,7 +94,8 @@ func newEnv(t *testing.T, redisURL string) env {
 		},
 		Subscriptions: pg,
 		Events:        pg,
-		URLPolicy:     domain.URLPolicy{AllowHTTP: false, ProtectSSRF: true},
+		Deliveries:    pg,
+		URLPolicy:     policy,
 		Envelope:      envelope,
 		Rand:          rand.Reader,
 	}))
