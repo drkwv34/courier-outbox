@@ -245,3 +245,131 @@ func deliveryIDs(dels []domain.Delivery) []string {
 	}
 	return out
 }
+
+type fakeDeliveries struct {
+	mu    sync.Mutex
+	seq   int
+	byID  map[string]domain.DeliveryView
+	owner map[string]string
+	atts  map[string][]domain.Attempt
+	err   error
+}
+
+func (f *fakeDeliveries) seed(t *testing.T, apiKeyID string, status domain.DeliveryStatus, attempts int, eventType string) domain.DeliveryView {
+	t.Helper()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.byID == nil {
+		f.byID = map[string]domain.DeliveryView{}
+		f.owner = map[string]string{}
+		f.atts = map[string][]domain.Attempt{}
+	}
+	f.seq++
+	now := time.Now().UTC()
+	v := domain.DeliveryView{
+		Delivery: domain.Delivery{
+			ID:             fmt.Sprintf("cccccccc-dddd-eeee-ffff-%012d", f.seq),
+			EventID:        fmt.Sprintf("aaaaaaaa-bbbb-cccc-dddd-%012d", f.seq),
+			SubscriptionID: fmt.Sprintf("11111111-2222-3333-4444-%012d", f.seq),
+			Status:         status,
+			AttemptCount:   attempts,
+			NextAttemptAt:  now,
+			CreatedAt:      now.Add(-time.Duration(f.seq) * time.Minute),
+			UpdatedAt:      now,
+		},
+		EventType: eventType,
+	}
+	f.byID[v.ID] = v
+	f.owner[v.ID] = apiKeyID
+	rows := make([]domain.Attempt, 0)
+	if attempts > 0 {
+		code := 500
+		msg := "subscriber 500"
+		rows = append(rows, domain.Attempt{DeliveryID: v.ID, StatusCode: &code, ErrorMessage: &msg, DurationMs: 11, RequestID: "r1", CreatedAt: now.Add(-2 * time.Second)})
+		if attempts > 1 {
+			code2 := 502
+			msg2 := "subscriber 502"
+			rows = append(rows, domain.Attempt{DeliveryID: v.ID, StatusCode: &code2, ErrorMessage: &msg2, DurationMs: 9, RequestID: "r2", CreatedAt: now.Add(-time.Second)})
+		}
+	}
+	f.atts[v.ID] = rows
+	return v
+}
+
+func (f *fakeDeliveries) ListDeliveries(_ context.Context, apiKeyID string, filter domain.DeliveryFilter) (domain.DeliveryPage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return domain.DeliveryPage{}, f.err
+	}
+	items := make([]domain.DeliveryView, 0)
+	for _, v := range f.byID {
+		if f.owner[v.ID] != apiKeyID {
+			continue
+		}
+		if filter.Status != "" && v.Status != filter.Status {
+			continue
+		}
+		if filter.SubscriptionID != "" && v.SubscriptionID != filter.SubscriptionID {
+			continue
+		}
+		if filter.EventType != "" && v.EventType != filter.EventType {
+			continue
+		}
+		if filter.CreatedAfter != nil && v.CreatedAt.Before(*filter.CreatedAfter) {
+			continue
+		}
+		if filter.CreatedBefore != nil && !v.CreatedAt.Before(*filter.CreatedBefore) {
+			continue
+		}
+		items = append(items, v)
+	}
+	limit := filter.LimitOrDefault()
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	total := len(items)
+	if offset > len(items) {
+		items = []domain.DeliveryView{}
+	} else {
+		items = items[offset:]
+		if len(items) > limit {
+			items = items[:limit]
+		}
+	}
+	return domain.DeliveryPage{Items: items, Total: total, Limit: limit, Offset: offset}, nil
+}
+
+func (f *fakeDeliveries) GetDelivery(_ context.Context, apiKeyID, id string) (domain.DeliveryView, []domain.Attempt, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return domain.DeliveryView{}, nil, f.err
+	}
+	v, ok := f.byID[id]
+	if !ok || f.owner[id] != apiKeyID {
+		return domain.DeliveryView{}, nil, domain.ErrNotFound
+	}
+	return v, append([]domain.Attempt(nil), f.atts[id]...), nil
+}
+
+func (f *fakeDeliveries) ReplayDelivery(_ context.Context, apiKeyID, id string) (domain.DeliveryView, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return domain.DeliveryView{}, f.err
+	}
+	v, ok := f.byID[id]
+	if !ok || f.owner[id] != apiKeyID {
+		return domain.DeliveryView{}, domain.ErrNotFound
+	}
+	next, err := v.Replay()
+	if err != nil {
+		return domain.DeliveryView{}, err
+	}
+	next.NextAttemptAt = time.Now().UTC()
+	v.Delivery = next
+	f.byID[id] = v
+	return v, nil
+}

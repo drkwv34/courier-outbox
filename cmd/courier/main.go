@@ -113,6 +113,7 @@ func serve() error {
 			},
 			Subscriptions: pg,
 			Events:        pg,
+			Deliveries:    pg,
 			URLPolicy: domain.URLPolicy{
 				AllowHTTP:   cfg.AllowHTTPCallbacks,
 				ProtectSSRF: cfg.SSRFProtection,
