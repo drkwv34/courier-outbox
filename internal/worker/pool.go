@@ -38,6 +38,7 @@ type Pool struct {
 	backoff     []time.Duration
 	now         func() time.Time
 	requestID   func() string
+	observer    Observer
 }
 
 // Config is the injected worker runtime configuration.
@@ -53,6 +54,7 @@ type Config struct {
 	Poll        time.Duration
 	Backoff     []time.Duration
 	Now         func() time.Time
+	Observer    Observer
 }
 
 // NewPool validates deps and returns a ready pool.
@@ -101,6 +103,7 @@ func NewPool(cfg Config) (*Pool, error) {
 		backoff:     backoff,
 		now:         cfg.Now,
 		requestID:   newRequestID,
+		observer:    cfg.Observer,
 	}, nil
 }
 
@@ -203,6 +206,9 @@ func (p *Pool) Process(ctx context.Context, job domain.DeliveryClaim) {
 		}
 		logger.Error("record attempt", slog.Any("err", err))
 		return
+	}
+	if p.observer != nil {
+		p.observer.ObserveAttempt(next.Status, duration)
 	}
 
 	attrs := []any{

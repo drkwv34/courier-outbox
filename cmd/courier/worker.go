@@ -52,6 +52,7 @@ func runWorker() error {
 		Lease:       cfg.WorkerLeaseTTL,
 		Poll:        cfg.WorkerPollInterval,
 		Backoff:     backoff,
+		Observer:    worker.NewPrometheus(),
 	})
 	if err != nil {
 		return err
