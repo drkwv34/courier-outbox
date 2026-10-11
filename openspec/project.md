@@ -10,7 +10,7 @@ courier-outbox is a reliable outbound webhook delivery service. Producers enqueu
 - `github.com/go-chi/chi/v5` for routing and middleware.
 - PostgreSQL 16+ as the system of record: events, deliveries, attempts, DLQ.
 - Redis 7+ for lease fencing and per-subscription outbound rate limits (never the only copy of state).
-- `log/slog` JSON logs, Prometheus metrics (planned).
+- `log/slog` JSON logs, Prometheus metrics (`GET /metrics`).
 - Docker Compose for local; GitHub Actions for CI; golangci-lint.
 - Integration tests with testcontainers-go ([ADR 0005](../docs/architecture/adr/0005-testcontainers-integration-tests.md)).
 

@@ -4,7 +4,7 @@ Each folder is one capability. Its `spec.md` is the **current** truth: requireme
 
 | Capability | Folder | SRS requirements | Status |
 |------------|--------|------------------|--------|
-| Service operations (health, readiness, OpenAPI, metrics) | `service-ops/` | FR-API-001..003, NFR-OBS-* | `/healthz` + `/readyz`; OpenAPI/metrics later |
+| Service operations (health, readiness, OpenAPI, metrics) | `service-ops/` | FR-API-001..003, NFR-OBS-* | `/healthz` + `/readyz` + `/openapi.json` + `/metrics`; `/docs` later |
 | API keys & authentication | `api-keys/` | FR-AUTH-001..003, NFR-SEC-001 | CLI create + Bearer auth; query isolation later |
 | Subscriptions & signing secrets | `subscriptions/` | FR-SUB-001..003, FR-ERR-002 | CRUD + secret-once + SSRF URL policy |
 | Event enqueue & idempotency | `event-enqueue/` | FR-EVT-001..003, NFR-REL-002, NFR-PERF-001 | POST/GET events + idempotent replay |
@@ -20,4 +20,5 @@ Consumer documentation (FR-DOC-001) is a README deliverable. It is tracked throu
 3. ~~`add-event-enqueue-idempotency`~~ archived 2026-10-08.
 4. ~~`add-delivery-worker-signing-retries`~~ archived 2026-10-09.
 5. ~~`add-dlq-replay-logs`~~ archived 2026-10-10.
-6. `add-openapi-metrics`: full OpenAPI, `/openapi.json`, `/docs`, `/metrics`.
+6. ~~`add-openapi-metrics-tests`~~ archived 2026-10-11.
+7. README pin-quality rewrite and demo seed (Day 8).
