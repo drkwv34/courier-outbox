@@ -203,6 +203,86 @@ func TestEvents_ParallelDuplicate(t *testing.T) {
 	if created > 1 {
 		t.Fatalf("created %d events, want at most 1", created)
 	}
+
+	status, raw := e.do(t, http.MethodGet, "/v1/events/"+eventID, key, "")
+	if status != http.StatusOK {
+		t.Fatalf("get = %d %s", status, raw)
+	}
+	var got eventJSON
+	if err := json.Unmarshal(raw, &got); err != nil || got.ID != eventID {
+		t.Fatalf("get body = %s err %v", raw, err)
+	}
+	if len(got.Deliveries) != 1 {
+		t.Fatalf("deliveries = %d, want 1", len(got.Deliveries))
+	}
+}
+
+func TestEvents_ParallelDuplicate_NoSubscriptions(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t, redisServer.URL)
+	key := e.issueKey(t)
+	body := `{"type":"order.created","payload":{"n":1},"idempotency_key":"parallel-empty"}`
+	const n = 16
+	type result struct {
+		status int
+		id     string
+		nDel   int
+		err    string
+	}
+	ch := make(chan result, n)
+	var wg sync.WaitGroup
+	for range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, e.server.URL+"/v1/events", strings.NewReader(body))
+			if err != nil {
+				ch <- result{err: err.Error()}
+				return
+			}
+			req.Header.Set("Authorization", "Bearer "+key)
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				ch <- result{err: err.Error()}
+				return
+			}
+			raw, err := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if err != nil {
+				ch <- result{err: err.Error()}
+				return
+			}
+			var out enqueueJSON
+			if err := json.Unmarshal(raw, &out); err != nil {
+				ch <- result{err: string(raw)}
+				return
+			}
+			ch <- result{status: resp.StatusCode, id: out.EventID, nDel: len(out.DeliveryIDs)}
+		}()
+	}
+	wg.Wait()
+	close(ch)
+
+	var eventID string
+	for r := range ch {
+		if r.err != "" {
+			t.Fatalf("request error: %s", r.err)
+		}
+		if r.status != http.StatusCreated && r.status != http.StatusOK {
+			t.Fatalf("status = %d", r.status)
+		}
+		if r.nDel != 0 {
+			t.Fatalf("delivery_ids = %d, want 0", r.nDel)
+		}
+		if eventID == "" {
+			eventID = r.id
+		}
+		if r.id != eventID {
+			t.Fatalf("event ids diverged: %s vs %s", r.id, eventID)
+		}
+	}
 }
 
 func TestEvents_OversizedPayloadIntegration(t *testing.T) {

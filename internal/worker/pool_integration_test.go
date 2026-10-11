@@ -134,6 +134,17 @@ func TestWorker_LeaseReclaimAfterCrash(t *testing.T) {
 	if err != nil || len(claimed) != 1 {
 		t.Fatalf("claim = %v %v", claimed, err)
 	}
+	st, err := lookupStatus(t, dsn, seed.deliveryID)
+	if err != nil || st != domain.DeliveryPending {
+		t.Fatalf("after crash-claim status = %s err %v, want pending (not lost)", st, err)
+	}
+	other, err := pg.ClaimDue(t.Context(), "too-soon", 30*time.Second, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(other) != 0 {
+		t.Fatalf("unexpired lease was stolen: %+v", other)
+	}
 	expireLease(t, dsn, claimed[0].Delivery.ID)
 
 	_ = startPool(t, pg, "survivor", 10*time.Millisecond)
@@ -222,6 +233,7 @@ func startPool(t *testing.T, pg *store.Postgres, id string, backoff time.Duratio
 		Lease:       30 * time.Second,
 		Poll:        20 * time.Millisecond,
 		Backoff:     domain.OverrideBackoff(backoff),
+		Observer:    worker.NewPrometheus(),
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -176,6 +176,7 @@ func startWorker(t *testing.T, e env) {
 		Lease:       30 * time.Second,
 		Poll:        20 * time.Millisecond,
 		Backoff:     domain.OverrideBackoff(10 * time.Millisecond),
+		Observer:    e.metrics,
 	})
 	if err != nil {
 		t.Fatal(err)

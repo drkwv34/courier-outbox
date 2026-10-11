@@ -53,6 +53,18 @@ func TestURLPolicy_Validate(t *testing.T) {
 		{name: "link-local ipv6", policy: secure, url: "https://[fe80::1]/hooks", want: false},
 		{name: "multicast ipv6", policy: secure, url: "https://[ff02::1]/hooks", want: false},
 		{name: "hostname not resolved", policy: secure, url: "https://localhost/hooks", want: true},
+		{name: "hostname with port", policy: secure, url: "https://example.com:8443/hooks", want: true},
+		{name: "public ipv6", policy: secure, url: "https://[2001:4860:4860::8888]/hooks", want: true},
+		{name: "fd00 ula", policy: secure, url: "https://[fd00::1]/hooks", want: false},
+		{name: "172.16/12 low", policy: secure, url: "https://172.16.0.0/hooks", want: false},
+		{name: "172.16/12 high", policy: secure, url: "https://172.31.255.255/hooks", want: false},
+		{name: "172.32 just outside", policy: secure, url: "https://172.32.0.1/hooks", want: true},
+		{name: "cgnat low", policy: secure, url: "https://100.64.0.0/hooks", want: false},
+		{name: "cgnat high", policy: secure, url: "https://100.127.255.255/hooks", want: false},
+		{name: "cgnat just below", policy: secure, url: "https://100.63.255.255/hooks", want: true},
+		{name: "169.254 high", policy: secure, url: "https://169.254.255.255/hooks", want: false},
+		{name: "169.255 just outside", policy: secure, url: "https://169.255.0.1/hooks", want: true},
+		{name: "mapped 192.168", policy: secure, url: "https://[::ffff:192.168.0.9]/hooks", want: false},
 		{name: "protection off loopback", policy: open, url: "http://127.0.0.1:9090/hooks", want: true},
 		{name: "protection off private", policy: open, url: "http://192.168.0.5/hooks", want: true},
 		{name: "protection off still rejects ftp", policy: open, url: "ftp://127.0.0.1/hooks", want: false},
@@ -99,5 +111,34 @@ func TestDeniedIP_Unmap(t *testing.T) {
 	}
 	if DeniedIP(public) {
 		t.Fatal("8.8.8.8 should be allowed")
+	}
+}
+
+func TestDeniedIP_Boundaries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		addr   string
+		denied bool
+	}{
+		{addr: "172.31.255.255", denied: true},
+		{addr: "172.32.0.1", denied: false},
+		{addr: "100.64.0.0", denied: true},
+		{addr: "100.63.255.255", denied: false},
+		{addr: "fd00::1", denied: true},
+		{addr: "2001:4860:4860::8888", denied: false},
+		{addr: "::ffff:192.168.0.9", denied: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.addr, func(t *testing.T) {
+			t.Parallel()
+			ip, err := netip.ParseAddr(tt.addr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := DeniedIP(ip); got != tt.denied {
+				t.Fatalf("DeniedIP(%s) = %v, want %v", tt.addr, got, tt.denied)
+			}
+		})
 	}
 }
