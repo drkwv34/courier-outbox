@@ -1,18 +1,18 @@
 openapi: 3.0.3
 info:
   title: courier-outbox
-  version: 0.4.0
+  version: 0.5.0
   description: |
     Reliable outbound webhook delivery service.
 
-    This document lists the endpoints that exist today. Each feature change
-    must update it in the same PR as the handler (see
-    docs/architecture/patterns-layering.md). The planned surface is in
-    SRS §4.2 and openspec/specs/.
+    This document is the source of truth for the HTTP contract and is served
+    at `GET /openapi.json`. Each feature change must update it in the same PR
+    as the handler (see docs/architecture/patterns-layering.md).
 
     Every path under `/v1` requires `Authorization: Bearer <api_key>`.
+    `/healthz`, `/readyz`, `/openapi.json`, and `/metrics` are public.
     Subscription CRUD, event enqueue, delivery list/detail, and DLQ replay
-    are implemented.
+    are implemented. `/metrics` is Prometheus text with no scrape token.
   license:
     name: MIT
 servers:
@@ -68,6 +68,49 @@ paths:
               example:
                 code: unavailable
                 message: "not ready: redis"
+  /openapi.json:
+    get:
+      operationId: getOpenAPI
+      summary: OpenAPI 3 document
+      description: |
+        JSON encoding of the committed `openapi/openapi.yaml`. Public.
+        Paths, methods, auth, and status codes match the live handlers.
+      tags: [ops]
+      security: []
+      responses:
+        "200":
+          description: OpenAPI 3 document.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [openapi, info, paths]
+                properties:
+                  openapi:
+                    type: string
+                  info:
+                    type: object
+                  paths:
+                    type: object
+  /metrics:
+    get:
+      operationId: getMetrics
+      summary: Prometheus metrics
+      description: |
+        Prometheus text exposition. Public (no scrape token). Series include
+        `courier_deliveries_total{status=}`, `courier_attempt_duration_seconds`,
+        and `courier_dlq_total`. Labels are bounded; ids and URLs are never
+        used as labels. Delivery counters increment in the worker process;
+        the API process still registers the names at zero.
+      tags: [ops]
+      security: []
+      responses:
+        "200":
+          description: Prometheus text.
+          content:
+            text/plain:
+              schema:
+                type: string
   /v1/subscriptions:
     get:
       operationId: listSubscriptions

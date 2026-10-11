@@ -19,6 +19,8 @@ import (
 	"github.com/drkwv34/courier-outbox/internal/config"
 	"github.com/drkwv34/courier-outbox/internal/domain"
 	"github.com/drkwv34/courier-outbox/internal/store"
+	"github.com/drkwv34/courier-outbox/internal/worker"
+	"github.com/drkwv34/courier-outbox/openapi"
 )
 
 const shutdownTimeout = 10 * time.Second
@@ -85,6 +87,10 @@ func serve() error {
 	if err != nil {
 		return fmt.Errorf("encryption envelope: %w", err)
 	}
+	doc, err := openapi.JSON()
+	if err != nil {
+		return fmt.Errorf("openapi: %w", err)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -111,6 +117,8 @@ func serve() error {
 				{Name: "postgres", Check: pg.Ping},
 				{Name: "redis", Check: rdb.Ping},
 			},
+			OpenAPIJSON:   doc,
+			Metrics:       worker.NewPrometheus().Handler(),
 			Subscriptions: pg,
 			Events:        pg,
 			Deliveries:    pg,

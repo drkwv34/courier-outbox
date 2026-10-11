@@ -23,6 +23,8 @@ import (
 	"github.com/drkwv34/courier-outbox/internal/domain"
 	"github.com/drkwv34/courier-outbox/internal/store"
 	"github.com/drkwv34/courier-outbox/internal/store/storetest"
+	"github.com/drkwv34/courier-outbox/internal/worker"
+	"github.com/drkwv34/courier-outbox/openapi"
 )
 
 var pgServer, redisServer *storetest.Server
@@ -48,10 +50,11 @@ func run(m *testing.M) int {
 }
 
 type env struct {
-	server *httptest.Server
-	pg     *store.Postgres
-	dsn    string
-	hasher domain.APIKeyHasher
+	server  *httptest.Server
+	pg      *store.Postgres
+	dsn     string
+	hasher  domain.APIKeyHasher
+	metrics *worker.Prometheus
 }
 
 func newEnv(t *testing.T, redisURL string) env {
@@ -84,6 +87,11 @@ func newEnvPolicy(t *testing.T, redisURL string, policy domain.URLPolicy) env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	doc, err := openapi.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	metrics := worker.NewPrometheus()
 	srv := httptest.NewServer(api.NewRouter(api.Deps{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Keys:   pg,
@@ -92,6 +100,8 @@ func newEnvPolicy(t *testing.T, redisURL string, policy domain.URLPolicy) env {
 			{Name: "postgres", Check: pg.Ping},
 			{Name: "redis", Check: rdb.Ping},
 		},
+		OpenAPIJSON:   doc,
+		Metrics:       metrics.Handler(),
 		Subscriptions: pg,
 		Events:        pg,
 		Deliveries:    pg,
@@ -100,7 +110,7 @@ func newEnvPolicy(t *testing.T, redisURL string, policy domain.URLPolicy) env {
 		Rand:          rand.Reader,
 	}))
 	t.Cleanup(srv.Close)
-	return env{server: srv, pg: pg, dsn: dsn, hasher: hasher}
+	return env{server: srv, pg: pg, dsn: dsn, hasher: hasher, metrics: metrics}
 }
 
 func (e env) issueKey(t *testing.T) string {

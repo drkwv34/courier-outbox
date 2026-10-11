@@ -20,6 +20,11 @@ type Deps struct {
 	// Keys and Hasher authenticate every /v1 request.
 	Keys   KeyLookup
 	Hasher domain.APIKeyHasher
+	// OpenAPIJSON is the served GET /openapi.json body. Empty skips the route.
+	OpenAPIJSON []byte
+	// Metrics is the Prometheus exposition handler for GET /metrics.
+	// Nil skips the route.
+	Metrics http.Handler
 	// Readiness lists the dependencies /readyz probes.
 	Readiness []ReadinessCheck
 	// Subscriptions is required to mount /v1/subscriptions.
@@ -53,6 +58,12 @@ func NewRouter(d Deps) http.Handler {
 
 	r.Get("/healthz", healthz(logger))
 	r.Get("/readyz", readyz(logger, d.Readiness))
+	if len(d.OpenAPIJSON) > 0 {
+		r.Get("/openapi.json", serveOpenAPI(logger, d.OpenAPIJSON))
+	}
+	if d.Metrics != nil {
+		r.Method(http.MethodGet, "/metrics", d.Metrics)
+	}
 
 	// The whole /v1 tree sits behind auth, including paths with no route, so
 	// nothing under /v1 is reachable anonymously by accident.

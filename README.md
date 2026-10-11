@@ -2,7 +2,7 @@
 
 Reliable outbound webhook delivery: signed payloads, retries with backoff, idempotency keys, and a dead-letter queue, written in Go.
 
-> **Status: DLQ list and replay.** The service has a schema, `courier migrate`, `courier keys create`, Bearer auth, `/healthz` + `/readyz`, subscription CRUD, transactional `POST /v1/events` with idempotency keys, and `courier worker`: SKIP LOCKED claims, v1 HMAC-signed POSTs, retries 1s → 5s → 25s → 2m → 10m, then `dead_lettered`. Operators can list deliveries (`GET /v1/deliveries`, including `status=dead_lettered`), inspect attempt history (`GET /v1/deliveries/:id`), and replay a dead letter (`POST /v1/deliveries/:id/replay`). Delivery is **at-least-once**, never exactly-once.
+> **Status: OpenAPI + Prometheus metrics.** The service has a schema, `courier migrate`, `courier keys create`, Bearer auth, `/healthz` + `/readyz`, served `GET /openapi.json`, public `GET /metrics`, subscription CRUD, transactional `POST /v1/events` with idempotency keys, and `courier worker`: SKIP LOCKED claims, v1 HMAC-signed POSTs, retries 1s → 5s → 25s → 2m → 10m, then `dead_lettered`. Operators can list deliveries (`GET /v1/deliveries`, including `status=dead_lettered`), inspect attempt history (`GET /v1/deliveries/:id`), and replay a dead letter (`POST /v1/deliveries/:id/replay`). Delivery is **at-least-once**, never exactly-once.
 
 ## Problem
 
@@ -15,7 +15,7 @@ Services that emit webhooks tend to reinvent the same fragile code: fire-and-for
 - **Transactional enqueue.** `POST /v1/events` commits the event and its pending delivery rows together in Postgres (outbox pattern), so nothing accepted is ever lost. Duplicate `idempotency_key` values for the same API key replay as `200` with `Idempotent-Replay: true`.
 - **Honest semantics.** Delivery is at-least-once, with a documented consumer contract, and never claims exactly-once. A crash after a successful POST and before the attempt is recorded can cause a duplicate send; consumers must dedupe.
 - **Verifiable.** Every POST is HMAC-SHA256 signed with a per-subscription secret (scheme below).
-- **Operable.** Each try is a `delivery_attempts` row. Failures retry 1s → 5s → 25s → 2m → 10m, then `dead_lettered`. Operators list the DLQ, inspect attempts, and replay. Health endpoints are live.
+- **Operable.** Each try is a `delivery_attempts` row. Failures retry 1s → 5s → 25s → 2m → 10m, then `dead_lettered`. Operators list the DLQ, inspect attempts, and replay. Health, OpenAPI (`/openapi.json`), and Prometheus (`/metrics`) are public.
 - **Safe by default.** Timeouts are strict (5s total), redirects are never followed, and signing secrets are encrypted at rest. Dial-time SSRF blocking is still limited: URL policy applies at subscription write.
 
 ## Stack
@@ -48,8 +48,10 @@ The full design is in [`docs/architecture/`](docs/architecture/README.md): layer
 cp .env.example .env          # optional; compose has local defaults
 docker compose up --build
 # migrate runs as a one-shot service and must exit 0 before api starts
-curl localhost:8080/healthz   # {"status":"ok"}
-curl localhost:8080/readyz    # {"status":"ready"}
+curl localhost:8080/healthz        # {"status":"ok"}
+curl localhost:8080/readyz         # {"status":"ready"}
+curl localhost:8080/openapi.json   # OpenAPI 3 document (public)
+curl localhost:8080/metrics        # Prometheus text (public, no scrape token)
 KEY=$(docker compose run --rm --no-deps api keys create --name local | awk '/key:/{print $2}')
 curl -i localhost:8080/v1/subscriptions
 # 401 without Authorization
