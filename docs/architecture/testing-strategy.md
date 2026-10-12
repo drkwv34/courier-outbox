@@ -10,7 +10,7 @@ Test the hard edges thoroughly: idempotency, the retry schedule, leases, signatu
 | **Fuzz** | `sign` (and URL parsing once added) | native `go test -fuzz` | Seed corpus runs as part of unit tests. Long fuzzing is manual. |
 | **Integration** | `store` against real Postgres/Redis, worker against `httptest.Server` | testcontainers-go ([ADR 0005](adr/0005-testcontainers-integration-tests.md)), build tag `integration` | `go test -race -tags=integration ./...` in a CI job with Docker |
 | **Contract** | OpenAPI document validity, handler/OpenAPI agreement | spectral or libopenapi (Should) | CI once the OpenAPI surface exists |
-| **Smoke / E2E** | `docker compose up`, enqueue, mock receives a signed POST within 5s (NFR-PORT-001) | `scripts/smoke.sh` (curl + jq) | CI job before release, and locally |
+| **Smoke / E2E** | `docker compose up --build`, enqueue, mock receives a signed POST within 5s (NFR-PORT-001) | `scripts/demo.sh` (curl + Python 3) | Reviewer/local after Compose is up; CI job before release |
 | **Load** | ≥ 20 deliveries/s (NFR-PERF-002), enqueue p99 ≤ 50ms (NFR-PERF-001) | `scripts/` load script, Go benchmarks | Manual, results noted in README. Never in CI. |
 
 ## Mandatory hard-edge tests (from SRS §7 / §12)
