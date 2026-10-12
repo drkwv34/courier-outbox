@@ -6,7 +6,7 @@
 
 ## 2. Demo seed
 
-- [ ] 2.1 Add `scripts/demo.sh` (executable): wait for `/healthz`+`/readyz`, `keys create`, subscribe to `http://mock-subscriber:9090/hooks`, enqueue one event, poll mock logs for a signed POST whose idempotency key is the event id within ~5s. Verify it exits 0 against a live Compose stack and does not print the API key or signing secret after creation.
+- [x] 2.1 Add `scripts/demo.sh` (executable): wait for `/healthz`+`/readyz`, `keys create`, subscribe to `http://mock-subscriber:9090/hooks`, enqueue one event, poll mock logs for a signed POST whose idempotency key is the event id within ~5s. Verify it exits 0 against a live Compose stack and does not print the API key or signing secret after creation.
 - [x] 2.2 Point `docs/architecture/testing-strategy.md` smoke row at `scripts/demo.sh` and verify the documented command matches the script path.
 
 ## 3. Config audit
@@ -19,8 +19,8 @@
 
 ## 5. Verification
 
-- [ ] 5.1 `openspec validate add-readme-demo --strict` passes.
-- [ ] 5.2 `go test -race ./...` and `golangci-lint run` stay green (no Go behaviour change expected).
+- [x] 5.1 `openspec validate add-readme-demo --strict` passes.
+- [x] 5.2 `go test -race ./...` and `golangci-lint run` stay green (no Go behaviour change expected).
 
 ## Workflow follow-up
 
