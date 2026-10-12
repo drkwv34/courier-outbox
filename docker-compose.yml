@@ -13,6 +13,12 @@ x-courier-env: &courier-env
   # Compose network. Production defaults are true / false.
   SSRF_PROTECTION: ${SSRF_PROTECTION:-false}
   ALLOW_HTTP_CALLBACKS: ${ALLOW_HTTP_CALLBACKS:-true}
+  # Worker knobs (same defaults as internal/config). Empty WORKER_ID → hostname-pid.
+  WORKER_ID: ${WORKER_ID:-}
+  WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+  WORKER_CLAIM_LIMIT: ${WORKER_CLAIM_LIMIT:-8}
+  WORKER_LEASE_TTL: ${WORKER_LEASE_TTL:-30s}
+  WORKER_POLL_INTERVAL: ${WORKER_POLL_INTERVAL:-500ms}
 
 services:
   # One-shot schema migration. api starts only after it exits 0.
