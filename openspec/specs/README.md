@@ -23,4 +23,4 @@ Consumer documentation (FR-DOC-001) is a README deliverable, specified under `de
 5. ~~`add-dlq-replay-logs`~~ archived 2026-10-10.
 6. ~~`add-openapi-metrics-tests`~~ archived 2026-10-11.
 7. ~~`add-readme-demo`~~ archived 2026-10-12.
-8. ~~Pin-ready triage / `v0.1.0`~~ `add-pin-ready-closeout` (Day 9; archive after merge).
+8. ~~`add-pin-ready-closeout`~~ archived 2026-10-13.
