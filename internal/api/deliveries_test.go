@@ -58,7 +58,7 @@ func TestDeliveries_ListGetReplay(t *testing.T) {
 		t.Fatalf("replay = %d %s", rec.Code, rec.Body)
 	}
 	replayed := decodeDelivery(t, rec)
-	if replayed.Status != "pending" || replayed.AttemptCount != 6 {
+	if replayed.Status != "pending" || replayed.AttemptCount != 0 {
 		t.Fatalf("replay body = %+v", replayed)
 	}
 

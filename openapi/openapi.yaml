@@ -416,9 +416,9 @@ paths:
       summary: Replay a dead-lettered delivery
       description: |
         Allowed only when the delivery is `dead_lettered`. Sets status to
-        `pending`, `next_attempt_at` to now, and clears the lease. Does not
-        reset `attempt_count` or delete attempt rows. Other statuses are 409
-        `invalid_transition`.
+        `pending`, `next_attempt_at` to now, clears the lease, and resets
+        `attempt_count` to 0 so the full backoff schedule runs again. Does
+        not delete attempt rows. Other statuses are 409 `invalid_transition`.
       tags: [deliveries]
       security:
         - bearerAuth: []

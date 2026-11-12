@@ -112,8 +112,8 @@ func TestReplay(t *testing.T) {
 	if got.Status != DeliveryPending {
 		t.Fatalf("status = %s", got.Status)
 	}
-	if got.AttemptCount != 6 {
-		t.Fatalf("attempt_count = %d, want 6", got.AttemptCount)
+	if got.AttemptCount != 0 {
+		t.Fatalf("attempt_count = %d, want 0", got.AttemptCount)
 	}
 	if got.LeaseOwner != "" || !got.LeaseUntil.IsZero() {
 		t.Fatalf("lease not cleared: %+v", got)

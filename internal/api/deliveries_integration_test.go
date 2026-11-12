@@ -123,7 +123,7 @@ func TestDeliveries_ForceDLQListReplayDelivered(t *testing.T) {
 		t.Fatalf("replay = %d %s", status, raw)
 	}
 	var replayed deliveryJSON
-	if err := json.Unmarshal(raw, &replayed); err != nil || replayed.Status != "pending" || replayed.AttemptCount != domain.MaxAttempts {
+	if err := json.Unmarshal(raw, &replayed); err != nil || replayed.Status != "pending" || replayed.AttemptCount != 0 {
 		t.Fatalf("replay body = %s", raw)
 	}
 
@@ -156,6 +156,71 @@ func TestDeliveries_ForceDLQListReplayDelivered(t *testing.T) {
 	last := detail.Attempts[len(detail.Attempts)-1]
 	if last.StatusCode == nil || *last.StatusCode != http.StatusOK {
 		t.Fatalf("last attempt = %+v", last)
+	}
+}
+
+func TestDeliveries_ReplayRestartsBackoff(t *testing.T) {
+	t.Parallel()
+
+	e := newEnvPolicy(t, redisServer.URL, domain.URLPolicy{AllowHTTP: true, ProtectSSRF: false})
+	key := e.issueKey(t)
+
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(mock.Close)
+
+	_ = createSub(t, e, key, `{"target_url":"`+mock.URL+`/hooks","event_types":["*"]}`)
+	body := `{"type":"order.created","payload":{"order_id":"replay-budget"},"idempotency_key":"replay-budget"}`
+	status, raw := e.do(t, http.MethodPost, "/v1/events", key, body)
+	if status != http.StatusCreated {
+		t.Fatalf("enqueue = %d %s", status, raw)
+	}
+	var created enqueueJSON
+	if err := json.Unmarshal(raw, &created); err != nil || len(created.DeliveryIDs) != 1 {
+		t.Fatalf("enqueue body = %s err %v", raw, err)
+	}
+	deliveryID := created.DeliveryIDs[0]
+
+	startWorker(t, e)
+	waitDeliveryStatus(t, e, key, deliveryID, "dead_lettered")
+
+	status, raw = e.do(t, http.MethodGet, "/v1/deliveries/"+deliveryID, key, "")
+	if status != http.StatusOK {
+		t.Fatalf("before replay = %d %s", status, raw)
+	}
+	var before deliveryJSON
+	if err := json.Unmarshal(raw, &before); err != nil {
+		t.Fatal(err)
+	}
+	if before.AttemptCount != domain.MaxAttempts || len(before.Attempts) != domain.MaxAttempts {
+		t.Fatalf("before replay count=%d attempts=%d", before.AttemptCount, len(before.Attempts))
+	}
+
+	status, raw = e.do(t, http.MethodPost, "/v1/deliveries/"+deliveryID+"/replay", key, "")
+	if status != http.StatusAccepted {
+		t.Fatalf("replay = %d %s", status, raw)
+	}
+	var replayed deliveryJSON
+	if err := json.Unmarshal(raw, &replayed); err != nil || replayed.Status != "pending" || replayed.AttemptCount != 0 {
+		t.Fatalf("replay body = %s", raw)
+	}
+
+	waitDeliveryStatus(t, e, key, deliveryID, "dead_lettered")
+
+	status, raw = e.do(t, http.MethodGet, "/v1/deliveries/"+deliveryID, key, "")
+	if status != http.StatusOK {
+		t.Fatalf("after second dlq = %d %s", status, raw)
+	}
+	var after deliveryJSON
+	if err := json.Unmarshal(raw, &after); err != nil {
+		t.Fatal(err)
+	}
+	if after.AttemptCount != domain.MaxAttempts {
+		t.Fatalf("second cycle attempt_count=%d, want %d", after.AttemptCount, domain.MaxAttempts)
+	}
+	if len(after.Attempts) != 2*domain.MaxAttempts {
+		t.Fatalf("attempts after second cycle = %d, want %d (history must stay append-only)", len(after.Attempts), 2*domain.MaxAttempts)
 	}
 }
 

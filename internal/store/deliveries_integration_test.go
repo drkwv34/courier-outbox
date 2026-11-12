@@ -547,6 +547,7 @@ func TestReplayDelivery_DeadLetterOnly(t *testing.T) {
 	}
 
 	forceDeliveryStatus(t, dsn, id, string(domain.DeliveryDeadLettered))
+	forceDeliveryAttemptCount(t, dsn, id, domain.MaxAttempts)
 	before := countAttempts(t, dsn, id)
 	view, err := pg.ReplayDelivery(t.Context(), owner.ID, id)
 	if err != nil {
@@ -558,9 +559,9 @@ func TestReplayDelivery_DeadLetterOnly(t *testing.T) {
 	if countAttempts(t, dsn, id) != before {
 		t.Fatal("replay deleted attempts")
 	}
-	st, _, lease := deliveryState(t, dsn, id)
-	if st != string(domain.DeliveryPending) || lease != "" {
-		t.Fatalf("state %s lease %q", st, lease)
+	st, attempts, lease := deliveryState(t, dsn, id)
+	if st != string(domain.DeliveryPending) || attempts != 0 || lease != "" {
+		t.Fatalf("state %s attempt_count=%d lease %q", st, attempts, lease)
 	}
 
 	_, err = pg.ReplayDelivery(t.Context(), other.ID, id)
@@ -584,6 +585,23 @@ func mustEnqueueType(t *testing.T, pg *store.Postgres, apiKeyID, eventType, idem
 		t.Fatal(err)
 	}
 	return res
+}
+
+func forceDeliveryAttemptCount(t *testing.T, dsn, id string, n int) {
+	t.Helper()
+	conn, err := pgx.Connect(t.Context(), dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(t.Context()) }()
+	tag, err := conn.Exec(t.Context(), `
+		UPDATE deliveries
+		SET attempt_count = $2,
+		    updated_at = now()
+		WHERE id = $1::uuid`, id, n)
+	if err != nil || tag.RowsAffected() != 1 {
+		t.Fatalf("force attempt_count: rows=%d err=%v", tag.RowsAffected(), err)
+	}
 }
 
 func forceDeliveryStatus(t *testing.T, dsn, id, status string) {

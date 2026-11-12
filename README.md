@@ -139,7 +139,7 @@ Timeouts: dial 2s, TLS handshake 2s, total 5s. At most 8 KiB of the response is 
 3. Return 2xx only after you have durably accepted the event.
 4. Respond within the 5s budget; process heavy work asynchronously.
 
-Operators: deliveries that still fail after six attempts are `dead_lettered`. List them with `GET /v1/deliveries?status=dead_lettered`, inspect `GET /v1/deliveries/:id` (append-only attempts), and `POST /v1/deliveries/:id/replay` to put a dead letter back to `pending` without erasing history. Replay of any other status is `409 invalid_transition`.
+Operators: deliveries that still fail after six attempts are `dead_lettered`. List them with `GET /v1/deliveries?status=dead_lettered`, inspect `GET /v1/deliveries/:id` (append-only attempts), and `POST /v1/deliveries/:id/replay` to put a dead letter back to `pending`. Replay resets `attempt_count` to 0 so a still-failing target gets the full 1s → 5s → 25s → 2m → 10m budget again; previous attempt rows are kept. Replay of any other status is `409 invalid_transition`.
 
 ## Trade-offs
 
