@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/netip"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -75,7 +77,18 @@ func testEnvelope(t *testing.T) domain.Envelope {
 }
 
 func testPolicy() domain.URLPolicy {
-	return domain.URLPolicy{AllowHTTP: false, ProtectSSRF: true}
+	return domain.URLPolicy{AllowHTTP: false, ProtectSSRF: true, Lookup: testLookup}
+}
+
+func testLookup(host string) ([]netip.Addr, error) {
+	switch strings.ToLower(host) {
+	case "localhost":
+		return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
+	case "metadata.google.internal":
+		return []netip.Addr{netip.MustParseAddr("169.254.169.254")}, nil
+	default:
+		return []netip.Addr{netip.MustParseAddr("8.8.8.8")}, nil
+	}
 }
 
 type fakeSubs struct {

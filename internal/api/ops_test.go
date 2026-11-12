@@ -24,7 +24,7 @@ func TestOpenAPI_JSON(t *testing.T) {
 		Keys:        &fakeKeys{},
 		Hasher:      testHasher(t),
 		OpenAPIJSON: doc,
-		Metrics:     worker.NewPrometheus().Handler(),
+		Metrics:     worker.EmptyHandler(),
 	})
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/openapi.json", nil)
@@ -47,21 +47,52 @@ func TestOpenAPI_JSON(t *testing.T) {
 	if !ok {
 		t.Fatalf("paths type %T", body["paths"])
 	}
-	for _, p := range []string{"/healthz", "/v1/events", "/v1/deliveries", "/openapi.json", "/metrics"} {
+	for _, p := range []string{"/healthz", "/v1/events", "/v1/deliveries", "/openapi.json", "/metrics", "/docs"} {
 		if _, ok := paths[p]; !ok {
 			t.Errorf("missing path %s", p)
 		}
 	}
 }
 
-func TestMetrics_PublicNamesAtZero(t *testing.T) {
+func TestDocs_PublicHTML(t *testing.T) {
+	t.Parallel()
+
+	h := NewRouter(Deps{
+		Logger: discardLogger(),
+		Keys:   &fakeKeys{},
+		Hasher: testHasher(t),
+	})
+	for _, path := range []string{"/docs", "/docs/"} {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s status = %d body %s", path, rec.Code, rec.Body)
+		}
+		ct := rec.Header().Get("Content-Type")
+		if !strings.Contains(ct, "text/html") {
+			t.Fatalf("%s Content-Type = %q", path, ct)
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, "/openapi.json") {
+			t.Fatalf("%s missing openapi.json reference: %s", path, body)
+		}
+		for _, cdn := range []string{"cdn.jsdelivr", "unpkg.com", "cdnjs.cloudflare"} {
+			if strings.Contains(body, cdn) {
+				t.Fatalf("%s loads CDN %s", path, cdn)
+			}
+		}
+	}
+}
+
+func TestMetrics_APIOmitsDeliverySeries(t *testing.T) {
 	t.Parallel()
 
 	h := NewRouter(Deps{
 		Logger:  discardLogger(),
 		Keys:    &fakeKeys{},
 		Hasher:  testHasher(t),
-		Metrics: worker.NewPrometheus().Handler(),
+		Metrics: worker.EmptyHandler(),
 	})
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil)
 	rec := httptest.NewRecorder()
@@ -76,8 +107,8 @@ func TestMetrics_PublicNamesAtZero(t *testing.T) {
 		"courier_attempt_duration_seconds",
 		"courier_dlq_total",
 	} {
-		if !strings.Contains(text, name) {
-			t.Errorf("missing %s in %s", name, text)
+		if strings.Contains(text, name) {
+			t.Errorf("API /metrics must not register %s: %s", name, text)
 		}
 	}
 }

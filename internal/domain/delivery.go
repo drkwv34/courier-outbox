@@ -185,12 +185,15 @@ func (d Delivery) RecordFailure(schedule []time.Duration) (Delivery, time.Durati
 }
 
 // Replay returns a pending copy of a dead-lettered delivery. AttemptCount is
-// unchanged. NextAttemptAt is left zero; the store applies the database clock.
+// reset to 0 so the full backoff schedule runs again. NextAttemptAt is left
+// zero; the store applies the database clock. Attempt history is not stored
+// on Delivery and is not deleted.
 func (d Delivery) Replay() (Delivery, error) {
 	if d.Status != DeliveryDeadLettered {
 		return Delivery{}, ErrInvalidTransition
 	}
 	d.Status = DeliveryPending
+	d.AttemptCount = 0
 	d.LeaseOwner = ""
 	d.LeaseUntil = time.Time{}
 	d.DeliveredAt = time.Time{}

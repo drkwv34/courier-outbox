@@ -70,6 +70,7 @@ func TestLoad(t *testing.T) {
 		{name: "bad lease ttl", env: with(map[string]string{"WORKER_LEASE_TTL": "forever"}), wantErrIn: "WORKER_LEASE_TTL"},
 		{name: "bad poll interval", env: with(map[string]string{"WORKER_POLL_INTERVAL": "0s"}), wantErrIn: "WORKER_POLL_INTERVAL"},
 		{name: "bad backoff ms", env: with(map[string]string{"COURIER_BACKOFF_MS": "0"}), wantErrIn: "COURIER_BACKOFF_MS"},
+		{name: "bad worker metrics addr", env: with(map[string]string{"WORKER_METRICS_ADDR": "9091"}), wantErrIn: "WORKER_METRICS_ADDR"},
 	}
 
 	for _, tt := range tests {
@@ -112,8 +113,8 @@ func TestLoad_WorkerDefaultsAndOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.WorkerConcurrency != 4 || cfg.WorkerClaimLimit != 8 || cfg.WorkerLeaseTTL != 30*time.Second || cfg.WorkerPollInterval != 500*time.Millisecond {
-		t.Fatalf("defaults conc=%d limit=%d lease=%s poll=%s", cfg.WorkerConcurrency, cfg.WorkerClaimLimit, cfg.WorkerLeaseTTL, cfg.WorkerPollInterval)
+	if cfg.WorkerConcurrency != 4 || cfg.WorkerClaimLimit != 8 || cfg.WorkerLeaseTTL != 30*time.Second || cfg.WorkerPollInterval != 500*time.Millisecond || cfg.WorkerMetricsAddr != ":9091" {
+		t.Fatalf("defaults conc=%d limit=%d lease=%s poll=%s metrics=%s", cfg.WorkerConcurrency, cfg.WorkerClaimLimit, cfg.WorkerLeaseTTL, cfg.WorkerPollInterval, cfg.WorkerMetricsAddr)
 	}
 	if cfg.BackoffOverride != nil {
 		t.Fatalf("BackoffOverride = %v, want nil", cfg.BackoffOverride)
@@ -125,12 +126,13 @@ func TestLoad_WorkerDefaultsAndOverride(t *testing.T) {
 		"WORKER_CLAIM_LIMIT":   "3",
 		"WORKER_LEASE_TTL":     "15s",
 		"WORKER_POLL_INTERVAL": "100ms",
+		"WORKER_METRICS_ADDR":  "127.0.0.1:9191",
 		"COURIER_BACKOFF_MS":   "10",
 	})))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.WorkerID != "w-1" || cfg.WorkerConcurrency != 2 || cfg.WorkerClaimLimit != 3 || cfg.WorkerLeaseTTL != 15*time.Second || cfg.WorkerPollInterval != 100*time.Millisecond {
+	if cfg.WorkerID != "w-1" || cfg.WorkerConcurrency != 2 || cfg.WorkerClaimLimit != 3 || cfg.WorkerLeaseTTL != 15*time.Second || cfg.WorkerPollInterval != 100*time.Millisecond || cfg.WorkerMetricsAddr != "127.0.0.1:9191" {
 		t.Fatalf("explicit = %+v", cfg)
 	}
 	if cfg.BackoffOverride == nil || *cfg.BackoffOverride != 10*time.Millisecond {

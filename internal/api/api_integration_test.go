@@ -91,6 +91,9 @@ func newEnvPolicy(t *testing.T, redisURL string, policy domain.URLPolicy) env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if policy.Lookup == nil {
+		policy.Lookup = worker.LookupHostIPs
+	}
 	metrics := worker.NewPrometheus()
 	srv := httptest.NewServer(api.NewRouter(api.Deps{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -101,7 +104,7 @@ func newEnvPolicy(t *testing.T, redisURL string, policy domain.URLPolicy) env {
 			{Name: "redis", Check: rdb.Ping},
 		},
 		OpenAPIJSON:   doc,
-		Metrics:       metrics.Handler(),
+		Metrics:       worker.EmptyHandler(),
 		Subscriptions: pg,
 		Events:        pg,
 		Deliveries:    pg,
@@ -331,6 +334,29 @@ func TestSubscriptions_Lifecycle(t *testing.T) {
 	}
 	if err := json.Unmarshal(raw, &otherList); err != nil || status != http.StatusOK || len(otherList.Items) != 0 {
 		t.Fatalf("foreign list = %d %s", status, raw)
+	}
+}
+
+func TestSubscriptions_SSRFHostnames(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t, redisServer.URL)
+	key := e.issueKey(t)
+	for _, url := range []string{
+		"https://localhost/hooks",
+		"https://metadata.google.internal/",
+		"https://127.0.0.1/hooks",
+	} {
+		status, raw := e.do(t, http.MethodPost, "/v1/subscriptions", key, `{"target_url":"`+url+`"}`)
+		if status != http.StatusBadRequest {
+			t.Fatalf("%s = %d %s", url, status, raw)
+		}
+		var env struct {
+			Code string `json:"code"`
+		}
+		if err := json.Unmarshal(raw, &env); err != nil || env.Code != "validation_failed" {
+			t.Fatalf("%s body = %s", url, raw)
+		}
 	}
 }
 

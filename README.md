@@ -4,7 +4,7 @@
 
 Reliable outbound webhook delivery: signed payloads, retries with backoff, idempotency keys, and a dead-letter queue — in Go.
 
-> **Status: pin-ready demo.** Produce an event over HTTP, persist it with its deliveries in one Postgres transaction, and watch `courier worker` HMAC-sign and POST it to `mock-subscriber` within seconds. Operators have OpenAPI (`GET /openapi.json`), Prometheus (`GET /metrics`), a DLQ, and replay. Delivery is **at-least-once**, never exactly-once. Run `docker compose up --build` then `./scripts/demo.sh`.
+> **Status: pin-ready demo.** Produce an event over HTTP, persist it with its deliveries in one Postgres transaction, and watch `courier worker` HMAC-sign and POST it to `mock-subscriber` within seconds. Operators have OpenAPI (`GET /openapi.json` and Swagger UI at `/docs`), Prometheus on the worker scrape (`GET /metrics` at `:9091`), a DLQ, and replay. Delivery is **at-least-once**, never exactly-once. Run `docker compose up --build` then `./scripts/demo.sh`.
 
 ## Problem
 
@@ -17,8 +17,8 @@ Courier is a small, boring reliability service: producers enqueue, workers deliv
 - **Transactional enqueue.** `POST /v1/events` commits the event and its pending delivery rows together in Postgres (outbox pattern), so nothing accepted is ever lost. Duplicate `idempotency_key` values for the same API key replay as `200` with `Idempotent-Replay: true`.
 - **Honest semantics.** Delivery is at-least-once, with a documented consumer contract, and never claims exactly-once. A crash after a successful POST and before the attempt is recorded can cause a duplicate send; consumers must dedupe.
 - **Verifiable.** Every POST is HMAC-SHA256 signed with a per-subscription secret (scheme below).
-- **Operable.** Each try is a `delivery_attempts` row. Failures retry 1s → 5s → 25s → 2m → 10m, then `dead_lettered`. Operators list the DLQ, inspect attempts, and replay. Health, OpenAPI (`/openapi.json`), and Prometheus (`/metrics`) are public.
-- **Safe by default.** Timeouts are strict (5s total), redirects are never followed, and signing secrets are encrypted at rest. Dial-time SSRF blocking is still limited: URL policy applies at subscription write. Compose relaxes SSRF and HTTPS-only so the worker can reach `mock-subscriber` on the private network.
+- **Operable.** Each try is a `delivery_attempts` row. Failures retry 1s → 5s → 25s → 2m → 10m, then `dead_lettered`. Operators list the DLQ, inspect attempts, and replay. Health, OpenAPI (`/openapi.json`), and Prometheus (`courier worker` `GET /metrics`) are public.
+- **Safe by default.** Timeouts are strict (5s total), redirects are never followed, and signing secrets are encrypted at rest. When `SSRF_PROTECTION=true`, create/update reject IP literals and hostnames that resolve to loopback, link-local, or private ranges, and the worker dialer rejects those IPs at connect time (DNS rebinding). Compose relaxes SSRF and HTTPS-only so the worker can reach `mock-subscriber` on the private network.
 
 ## Stack
 
@@ -58,13 +58,20 @@ docker compose up --build
 
 `scripts/demo.sh` waits for `/healthz` and `/readyz`, creates an API key, subscribes to `http://mock-subscriber:9090/hooks`, enqueues one event, and exits 0 only when the mock log shows a POST with `X-Courier-Signature` and `X-Courier-Idempotency-Key` equal to the event id.
 
+Load (NFR-PERF-002): enqueue N events and print enqueue rps.
+
+```bash
+COUNT=100 ./scripts/load.sh
+```
+
 Manual probes after the stack is up:
 
 ```bash
 curl localhost:8080/healthz        # {"status":"ok"}
 curl localhost:8080/readyz         # {"status":"ready"}
 curl localhost:8080/openapi.json   # OpenAPI 3 document (public)
-curl localhost:8080/metrics        # Prometheus text (public, no scrape token)
+curl localhost:8080/docs           # embedded Swagger UI (public, no CDN)
+curl localhost:9091/metrics        # worker Prometheus text (live delivery counters)
 KEY=$(docker compose run --rm --no-deps api keys create --name local | awk '/key:/{print $2}')
 curl -i localhost:8080/v1/subscriptions
 # 401 without Authorization
@@ -84,7 +91,7 @@ curl -s -H "Authorization: Bearer $KEY" localhost:8080/v1/deliveries/<delivery_i
 curl -i -X POST -H "Authorization: Bearer $KEY" localhost:8080/v1/deliveries/<delivery_id>/replay
 ```
 
-Services: `migrate` (one-shot), `api` (:8080), `worker` (same image, `courier worker`), `db` Postgres (:5432), `redis` (:6379), and `mock-subscriber` (:9090, logs received webhooks including signature headers).
+Services: `migrate` (one-shot), `api` (:8080), `worker` (same image, `courier worker`, Prometheus `:9091`), `db` Postgres (:5432), `redis` (:6379), and `mock-subscriber` (:9090, logs received webhooks including signature headers). Live delivery counters (`courier_deliveries_total`, `courier_attempt_duration_seconds`, `courier_dlq_total`) increment on the worker scrape after a recorded attempt. The API process does not register those series.
 
 Without Docker, against a running Postgres and Redis:
 
@@ -132,7 +139,7 @@ Timeouts: dial 2s, TLS handshake 2s, total 5s. At most 8 KiB of the response is 
 3. Return 2xx only after you have durably accepted the event.
 4. Respond within the 5s budget; process heavy work asynchronously.
 
-Operators: deliveries that still fail after six attempts are `dead_lettered`. List them with `GET /v1/deliveries?status=dead_lettered`, inspect `GET /v1/deliveries/:id` (append-only attempts), and `POST /v1/deliveries/:id/replay` to put a dead letter back to `pending` without erasing history. Replay of any other status is `409 invalid_transition`.
+Operators: deliveries that still fail after six attempts are `dead_lettered`. List them with `GET /v1/deliveries?status=dead_lettered`, inspect `GET /v1/deliveries/:id` (append-only attempts), and `POST /v1/deliveries/:id/replay` to put a dead letter back to `pending`. Replay resets `attempt_count` to 0 so a still-failing target gets the full 1s → 5s → 25s → 2m → 10m budget again; previous attempt rows are kept. Replay of any other status is `409 invalid_transition`.
 
 ## Trade-offs
 

@@ -226,7 +226,7 @@ func startPool(t *testing.T, pg *store.Postgres, id string, backoff time.Duratio
 		Store:       pg,
 		Envelope:    env,
 		Logger:      slog.New(slog.NewJSONHandler(buf, nil)),
-		Client:      worker.NewClient(),
+		Client:      worker.NewClient(false),
 		WorkerID:    id,
 		Concurrency: 2,
 		ClaimLimit:  8,

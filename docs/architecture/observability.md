@@ -52,7 +52,7 @@ When adding a struct that holds secrets, implement `LogValue() slog.Value` to re
 
 ## Metrics (FR-API-003, Should)
 
-Prometheus text on `GET /metrics`:
+Prometheus text on worker `GET /metrics` (`WORKER_METRICS_ADDR`, default `:9091`; Compose publishes host port 9091). The API process does not register these delivery series:
 
 - `courier_deliveries_total{status="delivered|retrying|dead_lettered"}` (counter)
 - `courier_attempt_duration_seconds` (histogram)

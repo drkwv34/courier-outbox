@@ -29,6 +29,7 @@ func TestJSON_RoundTripContainsLivePaths(t *testing.T) {
 		"/readyz",
 		"/openapi.json",
 		"/metrics",
+		"/docs",
 		"/v1/subscriptions",
 		"/v1/events",
 		"/v1/deliveries",

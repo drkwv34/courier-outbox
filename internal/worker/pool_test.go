@@ -58,7 +58,7 @@ func testPool(t *testing.T, store Store, now time.Time) (*Pool, *bytes.Buffer) {
 		Store:       store,
 		Envelope:    env,
 		Logger:      logger,
-		Client:      NewClient(),
+		Client:      NewClient(false),
 		WorkerID:    "test-worker",
 		Concurrency: 1,
 		ClaimLimit:  8,

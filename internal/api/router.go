@@ -64,6 +64,7 @@ func NewRouter(d Deps) http.Handler {
 	if d.Metrics != nil {
 		r.Method(http.MethodGet, "/metrics", d.Metrics)
 	}
+	mountDocs(r, logger)
 
 	// The whole /v1 tree sits behind auth, including paths with no route, so
 	// nothing under /v1 is reachable anonymously by accident.

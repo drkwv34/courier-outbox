@@ -22,8 +22,12 @@ const (
 )
 
 // NewClient returns the isolated outbound webhook client (FR-DEL-003).
-func NewClient() *http.Client {
+// When protectSSRF is true, Dialer.Control rejects denied resolved IPs.
+func NewClient(protectSSRF bool) *http.Client {
 	dialer := &net.Dialer{Timeout: dialTimeout}
+	if protectSSRF {
+		dialer.Control = ssrfDialControl
+	}
 	transport := &http.Transport{
 		Proxy:                 nil,
 		DialContext:           dialer.DialContext,

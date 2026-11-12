@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: courier-outbox
-  version: 0.5.0
+  version: 0.7.0
   description: |
     Reliable outbound webhook delivery service.
 
@@ -10,9 +10,10 @@ info:
     as the handler (see docs/architecture/patterns-layering.md).
 
     Every path under `/v1` requires `Authorization: Bearer <api_key>`.
-    `/healthz`, `/readyz`, `/openapi.json`, and `/metrics` are public.
+    `/healthz`, `/readyz`, `/openapi.json`, `/docs`, and `/metrics` are public.
     Subscription CRUD, event enqueue, delivery list/detail, and DLQ replay
-    are implemented. `/metrics` is Prometheus text with no scrape token.
+    are implemented. Live delivery counters are scraped from `courier worker`
+    (`WORKER_METRICS_ADDR`, default `:9091`), not from the API process.
   license:
     name: MIT
 servers:
@@ -92,16 +93,33 @@ paths:
                     type: object
                   paths:
                     type: object
+  /docs:
+    get:
+      operationId: getDocs
+      summary: Swagger UI
+      description: |
+        Embedded Swagger UI for the served OpenAPI document. Public.
+        Assets are vendored in the binary; no runtime CDN.
+      tags: [ops]
+      security: []
+      responses:
+        "200":
+          description: HTML UI.
+          content:
+            text/html:
+              schema:
+                type: string
   /metrics:
     get:
       operationId: getMetrics
       summary: Prometheus metrics
       description: |
-        Prometheus text exposition. Public (no scrape token). Series include
-        `courier_deliveries_total{status=}`, `courier_attempt_duration_seconds`,
-        and `courier_dlq_total`. Labels are bounded; ids and URLs are never
-        used as labels. Delivery counters increment in the worker process;
-        the API process still registers the names at zero.
+        Prometheus text exposition. Public (no scrape token). Live delivery
+        series (`courier_deliveries_total{status=}`,
+        `courier_attempt_duration_seconds`, `courier_dlq_total`) are served
+        by `courier worker` on `WORKER_METRICS_ADDR` (Compose publishes
+        host port 9091). The API process does not register those series.
+        Labels are bounded; ids and URLs are never used as labels.
       tags: [ops]
       security: []
       responses:
@@ -398,9 +416,9 @@ paths:
       summary: Replay a dead-lettered delivery
       description: |
         Allowed only when the delivery is `dead_lettered`. Sets status to
-        `pending`, `next_attempt_at` to now, and clears the lease. Does not
-        reset `attempt_count` or delete attempt rows. Other statuses are 409
-        `invalid_transition`.
+        `pending`, `next_attempt_at` to now, clears the lease, and resets
+        `attempt_count` to 0 so the full backoff schedule runs again. Does
+        not delete attempt rows. Other statuses are 409 `invalid_transition`.
       tags: [deliveries]
       security:
         - bearerAuth: []

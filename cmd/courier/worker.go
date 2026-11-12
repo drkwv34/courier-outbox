@@ -8,6 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/drkwv34/courier-outbox/internal/domain"
 	"github.com/drkwv34/courier-outbox/internal/store"
 	"github.com/drkwv34/courier-outbox/internal/worker"
@@ -41,18 +43,19 @@ func runWorker() error {
 		backoff = domain.OverrideBackoff(*cfg.BackoffOverride)
 	}
 
+	metrics := worker.NewPrometheus()
 	pool, err := worker.NewPool(worker.Config{
 		Store:       pg,
 		Envelope:    envelope,
 		Logger:      logger,
-		Client:      worker.NewClient(),
+		Client:      worker.NewClient(cfg.SSRFProtection),
 		WorkerID:    id,
 		Concurrency: cfg.WorkerConcurrency,
 		ClaimLimit:  cfg.WorkerClaimLimit,
 		Lease:       cfg.WorkerLeaseTTL,
 		Poll:        cfg.WorkerPollInterval,
 		Backoff:     backoff,
-		Observer:    worker.NewPrometheus(),
+		Observer:    metrics,
 	})
 	if err != nil {
 		return err
@@ -63,8 +66,16 @@ func runWorker() error {
 		slog.Int("concurrency", cfg.WorkerConcurrency),
 		slog.Int("claim_limit", cfg.WorkerClaimLimit),
 		slog.Duration("lease", cfg.WorkerLeaseTTL),
+		slog.String("metrics_addr", cfg.WorkerMetricsAddr),
 	)
-	if err := pool.Run(ctx); err != nil {
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		return worker.ServeMetrics(gctx, cfg.WorkerMetricsAddr, metrics.Handler())
+	})
+	g.Go(func() error {
+		return pool.Run(gctx)
+	})
+	if err := g.Wait(); err != nil {
 		return fmt.Errorf("worker: %w", err)
 	}
 	logger.Info("worker stopped")

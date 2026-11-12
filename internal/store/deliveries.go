@@ -288,6 +288,7 @@ func (p *Postgres) ReplayDelivery(ctx context.Context, apiKeyID, id string) (dom
 		const upd = `
 			UPDATE deliveries d
 			SET status = 'pending',
+			    attempt_count = 0,
 			    next_attempt_at = now(),
 			    lease_owner = NULL,
 			    lease_until = NULL,

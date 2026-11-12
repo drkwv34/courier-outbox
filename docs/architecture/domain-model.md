@@ -28,7 +28,7 @@
 - `event.type` is non-empty, ≤ 128 chars, and matches `^[a-z0-9]+([._-][a-z0-9]+)*$` (to be confirmed in the enqueue change).
 - `target_url` is absolute http(s), has no userinfo, and passes the SSRF policy when enabled.
 - `event_types` is non-empty. `"*"` must appear alone.
-- `attempt_count` never decreases. Replay does not reset it.
+- `attempt_count` is the current retry cycle (0 after enqueue or replay). Replay resets it to 0 so the full backoff table runs again. `delivery_attempts` rows are append-only and are never deleted by replay.
 - A `delivered` delivery is terminal.
 
 Constructors (`NewEvent`, `NewSubscription`, `ParseIdempotencyKey`, …) return `(T, error)` and wrap `ErrValidation` with a field-level cause. The zero value of a domain type is never treated as valid input.
