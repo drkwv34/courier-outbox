@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Operational surfaces that let operators and orchestrators run courier-outbox: liveness, readiness, the published API contract, and metrics. `GET /openapi.json` and public `GET /metrics` are implemented (FR-API-001, FR-API-003). Swagger UI at `/docs` is still optional.
+Operational surfaces that let operators and orchestrators run courier-outbox: liveness, readiness, the published API contract, metrics, and docs. `GET /openapi.json`, worker `GET /metrics`, and embedded Swagger UI at `/docs` are implemented (FR-API-001, FR-API-003).
 
 ## Requirements
 
@@ -67,7 +67,7 @@ The system SHALL expose `GET /openapi.json` without authentication. It SHALL ret
 - **AND** `/healthz`, `/readyz`, `/openapi.json`, `/docs`, and `/metrics` do not
 
 ### Requirement: Prometheus metrics
-The worker process SHALL expose `GET /metrics` without authentication as Prometheus text on a configurable listen address. It MUST register `courier_deliveries_total` (counter, `status` label), `courier_attempt_duration_seconds` (histogram), and `courier_dlq_total` (counter). After the worker records one successful delivery, those counters MUST be nonzero on that scrape. The API process MUST NOT register those delivery series. Docker Compose MUST publish the worker scrape address (FR-API-003, NFR-OBS-002).
+The worker SHALL expose unauthenticated Prometheus `GET /metrics` on a configurable address, registering `courier_deliveries_total{status}`, `courier_attempt_duration_seconds`, and `courier_dlq_total`. After one successful delivery those counters MUST be nonzero. The API MUST NOT register those series. Compose MUST publish the worker scrape (FR-API-003, NFR-OBS-002).
 
 #### Scenario: Metrics endpoint is public
 - **WHEN** a client sends `GET /metrics` to the worker listen address with no Authorization header
