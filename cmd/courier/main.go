@@ -118,7 +118,7 @@ func serve() error {
 				{Name: "redis", Check: rdb.Ping},
 			},
 			OpenAPIJSON:   doc,
-			Metrics:       worker.NewPrometheus().Handler(),
+			Metrics:       worker.EmptyHandler(),
 			Subscriptions: pg,
 			Events:        pg,
 			Deliveries:    pg,

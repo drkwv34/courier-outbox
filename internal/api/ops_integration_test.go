@@ -73,15 +73,25 @@ func TestOpenAPIAndMetrics_AfterDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	metricsBody, err := io.ReadAll(resp.Body)
+	apiMetrics, err := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("metrics = %d %s", resp.StatusCode, metricsBody)
+		t.Fatalf("api metrics = %d %s", resp.StatusCode, apiMetrics)
 	}
-	text := string(metricsBody)
+	if strings.Contains(string(apiMetrics), "courier_deliveries_total") {
+		t.Fatalf("API /metrics registered delivery series: %s", apiMetrics)
+	}
+
+	rec := httptest.NewRecorder()
+	metricsReq := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil)
+	e.metrics.Handler().ServeHTTP(rec, metricsReq)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("worker metrics = %d %s", rec.Code, rec.Body)
+	}
+	text := rec.Body.String()
 	for _, name := range []string{
 		"courier_deliveries_total",
 		"courier_attempt_duration_seconds",
@@ -91,7 +101,8 @@ func TestOpenAPIAndMetrics_AfterDelivery(t *testing.T) {
 			t.Errorf("missing %s in %s", name, text)
 		}
 	}
-	if !strings.Contains(text, `courier_deliveries_total{status="delivered"}`) {
-		t.Errorf("missing delivered series: %s", text)
+	if !strings.Contains(text, `courier_deliveries_total{status="delivered"}`) ||
+		strings.Contains(text, `courier_deliveries_total{status="delivered"} 0`) {
+		t.Errorf("delivered counter not incremented: %s", text)
 	}
 }

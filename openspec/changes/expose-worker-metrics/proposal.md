@@ -1,7 +1,7 @@
 # Proposal
 
 - **Id:** `expose-worker-metrics`
-- **Status:** approved
+- **Status:** implemented
 - **SRS requirements:** FR-API-003, NFR-OBS-002
 
 ## Why

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: courier-outbox
-  version: 0.5.0
+  version: 0.6.0
   description: |
     Reliable outbound webhook delivery service.
 
@@ -12,7 +12,8 @@ info:
     Every path under `/v1` requires `Authorization: Bearer <api_key>`.
     `/healthz`, `/readyz`, `/openapi.json`, and `/metrics` are public.
     Subscription CRUD, event enqueue, delivery list/detail, and DLQ replay
-    are implemented. `/metrics` is Prometheus text with no scrape token.
+    are implemented. Live delivery counters are scraped from `courier worker`
+    (`WORKER_METRICS_ADDR`, default `:9091`), not from the API process.
   license:
     name: MIT
 servers:
@@ -97,11 +98,12 @@ paths:
       operationId: getMetrics
       summary: Prometheus metrics
       description: |
-        Prometheus text exposition. Public (no scrape token). Series include
-        `courier_deliveries_total{status=}`, `courier_attempt_duration_seconds`,
-        and `courier_dlq_total`. Labels are bounded; ids and URLs are never
-        used as labels. Delivery counters increment in the worker process;
-        the API process still registers the names at zero.
+        Prometheus text exposition. Public (no scrape token). Live delivery
+        series (`courier_deliveries_total{status=}`,
+        `courier_attempt_duration_seconds`, `courier_dlq_total`) are served
+        by `courier worker` on `WORKER_METRICS_ADDR` (Compose publishes
+        host port 9091). The API process does not register those series.
+        Labels are bounded; ids and URLs are never used as labels.
       tags: [ops]
       security: []
       responses:

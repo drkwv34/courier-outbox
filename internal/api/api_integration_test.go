@@ -101,7 +101,7 @@ func newEnvPolicy(t *testing.T, redisURL string, policy domain.URLPolicy) env {
 			{Name: "redis", Check: rdb.Ping},
 		},
 		OpenAPIJSON:   doc,
-		Metrics:       metrics.Handler(),
+		Metrics:       worker.EmptyHandler(),
 		Subscriptions: pg,
 		Events:        pg,
 		Deliveries:    pg,

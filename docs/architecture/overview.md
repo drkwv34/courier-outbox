@@ -13,7 +13,8 @@ flowchart LR
     W -- "claim SKIP LOCKED / record attempt" --> PG
     W -- "rate limit / lease fencing" --> R[(Redis)]
     W -- "signed POST (5s budget)" --> S[Subscriber endpoint]
-    O[Operator] -- "DLQ list / replay, /metrics" --> API
+    O[Operator] -- "DLQ list / replay" --> API
+    O -- "worker /metrics" --> W
 ```
 
 A single `courier` binary serves the API and can run the worker in the same process (for the Compose demo) or on its own (`courier worker`). Both modes use the same packages.

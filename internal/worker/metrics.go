@@ -1,6 +1,8 @@
 package worker
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -76,4 +78,53 @@ func (p *Prometheus) Handler() http.Handler {
 		return http.NotFoundHandler()
 	}
 	return promhttp.HandlerFor(p.reg, promhttp.HandlerOpts{Registry: p.reg})
+}
+
+// EmptyHandler is a public Prometheus exposition with no courier delivery
+// series. The API process uses it so GET /metrics is not a zero-series trap.
+func EmptyHandler() http.Handler {
+	reg := prometheus.NewRegistry()
+	return promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg})
+}
+
+const metricsShutdownTimeout = 10 * time.Second
+
+// ServeMetrics serves GET /metrics on addr until ctx is cancelled.
+func ServeMetrics(ctx context.Context, addr string, handler http.Handler) error {
+	if handler == nil {
+		handler = http.NotFoundHandler()
+	}
+	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", handler)
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	errCh := make(chan error, 1)
+	go func() {
+		err := srv.ListenAndServe()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+			return
+		}
+		errCh <- nil
+	}()
+	select {
+	case err := <-errCh:
+		if err != nil {
+			return err
+		}
+		return nil
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), metricsShutdownTimeout)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			return err
+		}
+		return <-errCh
+	}
 }

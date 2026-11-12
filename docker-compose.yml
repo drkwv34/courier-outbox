@@ -19,6 +19,7 @@ x-courier-env: &courier-env
   WORKER_CLAIM_LIMIT: ${WORKER_CLAIM_LIMIT:-8}
   WORKER_LEASE_TTL: ${WORKER_LEASE_TTL:-30s}
   WORKER_POLL_INTERVAL: ${WORKER_POLL_INTERVAL:-500ms}
+  WORKER_METRICS_ADDR: ${WORKER_METRICS_ADDR:-:9091}
 
 services:
   # One-shot schema migration. api starts only after it exits 0.
@@ -56,6 +57,8 @@ services:
       target: api
     command: ["worker"]
     environment: *courier-env
+    ports:
+      - "${WORKER_METRICS_PORT:-9091}:9091"
     depends_on:
       migrate:
         condition: service_completed_successfully

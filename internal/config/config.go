@@ -28,6 +28,7 @@ const (
 	defaultWorkerClaimLimit  = 8
 	defaultWorkerLeaseTTL    = 30 * time.Second
 	defaultWorkerPoll        = 500 * time.Millisecond
+	defaultWorkerMetricsAddr = ":9091"
 )
 
 // Config is the validated runtime configuration.
@@ -57,6 +58,9 @@ type Config struct {
 	WorkerLeaseTTL time.Duration
 	// WorkerPollInterval is the wait after an empty claim.
 	WorkerPollInterval time.Duration
+	// WorkerMetricsAddr is the listen address for the worker GET /metrics
+	// scrape. Default :9091.
+	WorkerMetricsAddr string
 	// BackoffOverride, when non-nil, replaces every production retry delay.
 	// It is populated only from COURIER_BACKOFF_MS and is test-only.
 	BackoffOverride *time.Duration
@@ -75,12 +79,16 @@ func Load(getenv func(string) string) (Config, error) {
 		WorkerClaimLimit:   defaultWorkerClaimLimit,
 		WorkerLeaseTTL:     defaultWorkerLeaseTTL,
 		WorkerPollInterval: defaultWorkerPoll,
+		WorkerMetricsAddr:  valueOr(getenv("WORKER_METRICS_ADDR"), defaultWorkerMetricsAddr),
 	}
 
 	var errs []error
 
 	if _, _, err := net.SplitHostPort(cfg.HTTPAddr); err != nil {
 		errs = append(errs, fmt.Errorf("%w: HTTP_ADDR %q: %w", ErrInvalid, cfg.HTTPAddr, err))
+	}
+	if _, _, err := net.SplitHostPort(cfg.WorkerMetricsAddr); err != nil {
+		errs = append(errs, fmt.Errorf("%w: WORKER_METRICS_ADDR %q: %w", ErrInvalid, cfg.WorkerMetricsAddr, err))
 	}
 
 	level, err := parseLevel(valueOr(getenv("LOG_LEVEL"), "info"))

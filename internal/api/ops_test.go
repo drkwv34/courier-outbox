@@ -24,7 +24,7 @@ func TestOpenAPI_JSON(t *testing.T) {
 		Keys:        &fakeKeys{},
 		Hasher:      testHasher(t),
 		OpenAPIJSON: doc,
-		Metrics:     worker.NewPrometheus().Handler(),
+		Metrics:     worker.EmptyHandler(),
 	})
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/openapi.json", nil)
@@ -54,14 +54,14 @@ func TestOpenAPI_JSON(t *testing.T) {
 	}
 }
 
-func TestMetrics_PublicNamesAtZero(t *testing.T) {
+func TestMetrics_APIOmitsDeliverySeries(t *testing.T) {
 	t.Parallel()
 
 	h := NewRouter(Deps{
 		Logger:  discardLogger(),
 		Keys:    &fakeKeys{},
 		Hasher:  testHasher(t),
-		Metrics: worker.NewPrometheus().Handler(),
+		Metrics: worker.EmptyHandler(),
 	})
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil)
 	rec := httptest.NewRecorder()
@@ -76,8 +76,8 @@ func TestMetrics_PublicNamesAtZero(t *testing.T) {
 		"courier_attempt_duration_seconds",
 		"courier_dlq_total",
 	} {
-		if !strings.Contains(text, name) {
-			t.Errorf("missing %s in %s", name, text)
+		if strings.Contains(text, name) {
+			t.Errorf("API /metrics must not register %s: %s", name, text)
 		}
 	}
 }

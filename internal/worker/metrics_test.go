@@ -1,7 +1,9 @@
 package worker
 
 import (
+	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -66,6 +68,83 @@ func TestObserveAttempt_NilObserver(t *testing.T) {
 
 	var p *Prometheus
 	p.ObserveAttempt(domain.DeliveryDelivered, time.Millisecond)
+}
+
+func TestEmptyHandler_OmitsDeliverySeries(t *testing.T) {
+	t.Parallel()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil)
+	EmptyHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, name := range []string{
+		"courier_deliveries_total",
+		"courier_attempt_duration_seconds",
+		"courier_dlq_total",
+	} {
+		if strings.Contains(body, name) {
+			t.Errorf("empty handler registered %s: %s", name, body)
+		}
+	}
+}
+
+func TestServeMetrics_AfterDelivered(t *testing.T) {
+	t.Parallel()
+
+	p := NewPrometheus()
+	p.ObserveAttempt(domain.DeliveryDelivered, 10*time.Millisecond)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() { errCh <- ServeMetrics(ctx, addr, p.Handler()) }()
+
+	var body string
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+addr+"/metrics", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		raw, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d body %s", resp.StatusCode, raw)
+		}
+		body = string(raw)
+		break
+	}
+	if body == "" {
+		t.Fatal("worker metrics HTTP never answered")
+	}
+	if !strings.Contains(body, `courier_deliveries_total{status="delivered"}`) ||
+		strings.Contains(body, `courier_deliveries_total{status="delivered"} 0`) {
+		t.Fatalf("delivered counter: %s", body)
+	}
+	cancel()
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("ServeMetrics did not return")
+	}
 }
 
 func scrape(t *testing.T, p *Prometheus) string {
