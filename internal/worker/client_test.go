@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -26,7 +27,7 @@ func TestPostWebhook_OK(t *testing.T) {
 
 	hdr := make(http.Header)
 	hdr.Set("User-Agent", UserAgent)
-	status, err := postWebhook(t.Context(), NewClient(), srv.URL, []byte(`{"ok":true}`), hdr)
+	status, err := postWebhook(t.Context(), NewClient(false), srv.URL, []byte(`{"ok":true}`), hdr)
 	if err != nil || status != http.StatusOK {
 		t.Fatalf("status=%d err=%v", status, err)
 	}
@@ -46,7 +47,7 @@ func TestPostWebhook_DoesNotFollowRedirect(t *testing.T) {
 	}))
 	t.Cleanup(redir.Close)
 
-	status, err := postWebhook(t.Context(), NewClient(), redir.URL, []byte(`{}`), make(http.Header))
+	status, err := postWebhook(t.Context(), NewClient(false), redir.URL, []byte(`{}`), make(http.Header))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +69,7 @@ func TestPostWebhook_SlowIsTimeout(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	start := time.Now()
-	_, err := postWebhook(t.Context(), NewClient(), srv.URL, []byte(`{}`), make(http.Header))
+	_, err := postWebhook(t.Context(), NewClient(false), srv.URL, []byte(`{}`), make(http.Header))
 	if err == nil {
 		t.Fatal("expected timeout")
 	}
@@ -77,5 +78,39 @@ func TestPostWebhook_SlowIsTimeout(t *testing.T) {
 	}
 	if time.Since(start) > 8*time.Second {
 		t.Fatalf("timeout took too long: %s", time.Since(start))
+	}
+}
+
+func TestClient_SSRFBlocksLoopback(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("request reached loopback subscriber")
+	}))
+	t.Cleanup(srv.Close)
+
+	_, err := postWebhook(t.Context(), NewClient(true), srv.URL, []byte(`{}`), make(http.Header))
+	if err == nil {
+		t.Fatal("expected dial-time SSRF block")
+	}
+	if !errors.Is(err, ErrDestinationBlocked) && !strings.Contains(err.Error(), "destination blocked") && !strings.Contains(err.Error(), "ssrf") {
+		t.Fatalf("err = %v, want destination blocked", err)
+	}
+}
+
+func TestSSRFDialControl(t *testing.T) {
+	t.Parallel()
+
+	if err := ssrfDialControl("tcp", "127.0.0.1:80", nil); !errors.Is(err, ErrDestinationBlocked) {
+		t.Fatalf("loopback = %v", err)
+	}
+	if err := ssrfDialControl("tcp", "169.254.169.254:80", nil); !errors.Is(err, ErrDestinationBlocked) {
+		t.Fatalf("link-local = %v", err)
+	}
+	if err := ssrfDialControl("tcp", "10.0.0.1:443", nil); !errors.Is(err, ErrDestinationBlocked) {
+		t.Fatalf("private = %v", err)
+	}
+	if err := ssrfDialControl("tcp", "8.8.8.8:443", nil); err != nil {
+		t.Fatalf("public = %v", err)
 	}
 }

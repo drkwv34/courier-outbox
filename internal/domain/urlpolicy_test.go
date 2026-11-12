@@ -10,8 +10,8 @@ import (
 func TestURLPolicy_Validate(t *testing.T) {
 	t.Parallel()
 
-	secure := URLPolicy{AllowHTTP: false, ProtectSSRF: true}
-	httpOK := URLPolicy{AllowHTTP: true, ProtectSSRF: true}
+	secure := withLookup(URLPolicy{AllowHTTP: false, ProtectSSRF: true})
+	httpOK := withLookup(URLPolicy{AllowHTTP: true, ProtectSSRF: true})
 	open := URLPolicy{AllowHTTP: true, ProtectSSRF: false}
 
 	tests := []struct {
@@ -52,7 +52,15 @@ func TestURLPolicy_Validate(t *testing.T) {
 		{name: "ula ipv6", policy: secure, url: "https://[fc00::1]/hooks", want: false},
 		{name: "link-local ipv6", policy: secure, url: "https://[fe80::1]/hooks", want: false},
 		{name: "multicast ipv6", policy: secure, url: "https://[ff02::1]/hooks", want: false},
-		{name: "hostname not resolved", policy: secure, url: "https://localhost/hooks", want: true},
+		{name: "localhost hostname denied", policy: secure, url: "https://localhost/hooks", want: false},
+		{name: "metadata hostname denied", policy: secure, url: "https://metadata.google.internal/", want: false},
+		{name: "nil lookup hostname denied", policy: URLPolicy{AllowHTTP: false, ProtectSSRF: true}, url: "https://example.com/hooks", want: false},
+		{name: "lookup error fail closed", policy: URLPolicy{AllowHTTP: false, ProtectSSRF: true, Lookup: func(string) ([]netip.Addr, error) {
+			return nil, errors.New("nxdomain")
+		}}, url: "https://example.com/hooks", want: false},
+		{name: "any private answer denied", policy: URLPolicy{AllowHTTP: false, ProtectSSRF: true, Lookup: func(string) ([]netip.Addr, error) {
+			return []netip.Addr{netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("10.0.0.1")}, nil
+		}}, url: "https://mixed.example/hooks", want: false},
 		{name: "hostname with port", policy: secure, url: "https://example.com:8443/hooks", want: true},
 		{name: "public ipv6", policy: secure, url: "https://[2001:4860:4860::8888]/hooks", want: true},
 		{name: "fd00 ula", policy: secure, url: "https://[fd00::1]/hooks", want: false},
@@ -141,4 +149,18 @@ func TestDeniedIP_Boundaries(t *testing.T) {
 			}
 		})
 	}
+}
+
+func withLookup(p URLPolicy) URLPolicy {
+	p.Lookup = func(host string) ([]netip.Addr, error) {
+		switch strings.ToLower(host) {
+		case "localhost":
+			return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
+		case "metadata.google.internal":
+			return []netip.Addr{netip.MustParseAddr("169.254.169.254")}, nil
+		default:
+			return []netip.Addr{netip.MustParseAddr("8.8.8.8")}, nil
+		}
+	}
+	return p
 }

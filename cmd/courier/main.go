@@ -125,6 +125,7 @@ func serve() error {
 			URLPolicy: domain.URLPolicy{
 				AllowHTTP:   cfg.AllowHTTPCallbacks,
 				ProtectSSRF: cfg.SSRFProtection,
+				Lookup:      worker.LookupHostIPs,
 			},
 			Envelope: envelope,
 			Rand:     rand.Reader,

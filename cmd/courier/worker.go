@@ -48,7 +48,7 @@ func runWorker() error {
 		Store:       pg,
 		Envelope:    envelope,
 		Logger:      logger,
-		Client:      worker.NewClient(),
+		Client:      worker.NewClient(cfg.SSRFProtection),
 		WorkerID:    id,
 		Concurrency: cfg.WorkerConcurrency,
 		ClaimLimit:  cfg.WorkerClaimLimit,

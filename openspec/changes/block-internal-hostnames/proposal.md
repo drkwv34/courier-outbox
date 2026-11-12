@@ -1,7 +1,7 @@
 # Proposal
 
 - **Id:** `block-internal-hostnames`
-- **Status:** approved
+- **Status:** implemented
 - **SRS requirements:** FR-SUB-003, NFR-SEC-002
 
 ## Why

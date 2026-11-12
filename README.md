@@ -18,7 +18,7 @@ Courier is a small, boring reliability service: producers enqueue, workers deliv
 - **Honest semantics.** Delivery is at-least-once, with a documented consumer contract, and never claims exactly-once. A crash after a successful POST and before the attempt is recorded can cause a duplicate send; consumers must dedupe.
 - **Verifiable.** Every POST is HMAC-SHA256 signed with a per-subscription secret (scheme below).
 - **Operable.** Each try is a `delivery_attempts` row. Failures retry 1s → 5s → 25s → 2m → 10m, then `dead_lettered`. Operators list the DLQ, inspect attempts, and replay. Health, OpenAPI (`/openapi.json`), and Prometheus (`courier worker` `GET /metrics`) are public.
-- **Safe by default.** Timeouts are strict (5s total), redirects are never followed, and signing secrets are encrypted at rest. Dial-time SSRF blocking is still limited: URL policy applies at subscription write. Compose relaxes SSRF and HTTPS-only so the worker can reach `mock-subscriber` on the private network.
+- **Safe by default.** Timeouts are strict (5s total), redirects are never followed, and signing secrets are encrypted at rest. When `SSRF_PROTECTION=true`, create/update reject IP literals and hostnames that resolve to loopback, link-local, or private ranges, and the worker dialer rejects those IPs at connect time (DNS rebinding). Compose relaxes SSRF and HTTPS-only so the worker can reach `mock-subscriber` on the private network.
 
 ## Stack
 

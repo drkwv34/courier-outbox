@@ -6,14 +6,19 @@ import (
 	"strings"
 )
 
+// LookupIPs resolves a hostname. It is injected so this package stays
+// free of resolver I/O. A nil lookup fails closed when ProtectSSRF is true.
+type LookupIPs func(host string) ([]netip.Addr, error)
+
 // URLPolicy is the create/update check for subscription target URLs.
 type URLPolicy struct {
 	AllowHTTP   bool
 	ProtectSSRF bool
+	Lookup      LookupIPs
 }
 
-// deniedPrefixes is the create-time IP deny-list (NFR-SEC-002). Hostnames are
-// not resolved here; dial-time checks belong to the worker.
+// deniedPrefixes is the IP deny-list (NFR-SEC-002). Hostnames are resolved
+// through Lookup at create/update; the worker also checks the dialed IP.
 var deniedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("0.0.0.0/8"),
 	netip.MustParsePrefix("10.0.0.0/8"),
@@ -47,8 +52,8 @@ func DeniedIP(addr netip.Addr) bool {
 }
 
 // Validate parses raw as an absolute http(s) URL and applies scheme, userinfo,
-// host, and (when ProtectSSRF) IP-literal checks. The raw value is never
-// echoed in the error.
+// host, and (when ProtectSSRF) IP-literal and hostname-resolution checks.
+// The raw value is never echoed in the error.
 func (p URLPolicy) Validate(raw string) error {
 	if strings.TrimSpace(raw) == "" {
 		return &ValidationError{Field: "target_url", Reason: "is required"}
@@ -81,10 +86,26 @@ func (p URLPolicy) Validate(raw string) error {
 	}
 	ip, err := netip.ParseAddr(host)
 	if err != nil {
-		return nil
+		return p.checkResolved(host)
 	}
 	if DeniedIP(ip) {
 		return &ValidationError{Field: "target_url", Reason: "destination is blocked"}
+	}
+	return nil
+}
+
+func (p URLPolicy) checkResolved(host string) error {
+	if p.Lookup == nil {
+		return &ValidationError{Field: "target_url", Reason: "destination is blocked"}
+	}
+	addrs, err := p.Lookup(host)
+	if err != nil || len(addrs) == 0 {
+		return &ValidationError{Field: "target_url", Reason: "destination is blocked"}
+	}
+	for _, a := range addrs {
+		if DeniedIP(a) {
+			return &ValidationError{Field: "target_url", Reason: "destination is blocked"}
+		}
 	}
 	return nil
 }

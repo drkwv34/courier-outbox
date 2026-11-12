@@ -169,7 +169,7 @@ func startWorker(t *testing.T, e env) {
 		Store:       e.pg,
 		Envelope:    envelope,
 		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Client:      worker.NewClient(),
+		Client:      worker.NewClient(false),
 		WorkerID:    "it-dlq",
 		Concurrency: 2,
 		ClaimLimit:  8,

@@ -81,7 +81,7 @@ func NewPool(cfg Config) (*Pool, error) {
 		cfg.Poll = 500 * time.Millisecond
 	}
 	if cfg.Client == nil {
-		cfg.Client = NewClient()
+		cfg.Client = NewClient(false)
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now

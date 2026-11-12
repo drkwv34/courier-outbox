@@ -119,6 +119,8 @@ func TestSubscriptions_Validation(t *testing.T) {
 		{name: "missing url", method: http.MethodPost, path: "/v1/subscriptions", body: `{}`, want: http.StatusBadRequest, code: "validation_failed"},
 		{name: "http rejected", method: http.MethodPost, path: "/v1/subscriptions", body: `{"target_url":"http://example.com/hooks"}`, want: http.StatusBadRequest, code: "validation_failed"},
 		{name: "loopback", method: http.MethodPost, path: "/v1/subscriptions", body: `{"target_url":"https://127.0.0.1/hooks"}`, want: http.StatusBadRequest, code: "validation_failed"},
+		{name: "localhost hostname", method: http.MethodPost, path: "/v1/subscriptions", body: `{"target_url":"https://localhost/hooks"}`, want: http.StatusBadRequest, code: "validation_failed"},
+		{name: "metadata hostname", method: http.MethodPost, path: "/v1/subscriptions", body: `{"target_url":"https://metadata.google.internal/"}`, want: http.StatusBadRequest, code: "validation_failed"},
 		{name: "star mixed", method: http.MethodPost, path: "/v1/subscriptions", body: `{"target_url":"https://example.com/h","event_types":["*","a.b"]}`, want: http.StatusBadRequest, code: "validation_failed"},
 		{name: "empty types", method: http.MethodPost, path: "/v1/subscriptions", body: `{"target_url":"https://example.com/h","event_types":[]}`, want: http.StatusBadRequest, code: "validation_failed"},
 		{name: "unknown field", method: http.MethodPost, path: "/v1/subscriptions", body: `{"target_url":"https://example.com/h","nope":1}`, want: http.StatusBadRequest, code: "validation_failed"},
