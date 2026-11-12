@@ -49,6 +49,10 @@ jobs:
       - run: go mod verify
       - run: go vet ./...
       - run: go test -race -count=1 ./...
+      - name: Smoke load script and docs tests
+        run: |
+          bash -n scripts/load.sh scripts/demo.sh
+          go test -count=1 ./internal/api -run 'TestDocs|TestOpenAPI'
 
   integration:
     name: Integration tests (race, containers)

@@ -4,7 +4,7 @@
 
 Reliable outbound webhook delivery: signed payloads, retries with backoff, idempotency keys, and a dead-letter queue — in Go.
 
-> **Status: pin-ready demo.** Produce an event over HTTP, persist it with its deliveries in one Postgres transaction, and watch `courier worker` HMAC-sign and POST it to `mock-subscriber` within seconds. Operators have OpenAPI (`GET /openapi.json`), Prometheus on the worker scrape (`GET /metrics` at `:9091`), a DLQ, and replay. Delivery is **at-least-once**, never exactly-once. Run `docker compose up --build` then `./scripts/demo.sh`.
+> **Status: pin-ready demo.** Produce an event over HTTP, persist it with its deliveries in one Postgres transaction, and watch `courier worker` HMAC-sign and POST it to `mock-subscriber` within seconds. Operators have OpenAPI (`GET /openapi.json` and Swagger UI at `/docs`), Prometheus on the worker scrape (`GET /metrics` at `:9091`), a DLQ, and replay. Delivery is **at-least-once**, never exactly-once. Run `docker compose up --build` then `./scripts/demo.sh`.
 
 ## Problem
 
@@ -58,12 +58,19 @@ docker compose up --build
 
 `scripts/demo.sh` waits for `/healthz` and `/readyz`, creates an API key, subscribes to `http://mock-subscriber:9090/hooks`, enqueues one event, and exits 0 only when the mock log shows a POST with `X-Courier-Signature` and `X-Courier-Idempotency-Key` equal to the event id.
 
+Load (NFR-PERF-002): enqueue N events and print enqueue rps.
+
+```bash
+COUNT=100 ./scripts/load.sh
+```
+
 Manual probes after the stack is up:
 
 ```bash
 curl localhost:8080/healthz        # {"status":"ok"}
 curl localhost:8080/readyz         # {"status":"ready"}
 curl localhost:8080/openapi.json   # OpenAPI 3 document (public)
+curl localhost:8080/docs           # embedded Swagger UI (public, no CDN)
 curl localhost:9091/metrics        # worker Prometheus text (live delivery counters)
 KEY=$(docker compose run --rm --no-deps api keys create --name local | awk '/key:/{print $2}')
 curl -i localhost:8080/v1/subscriptions

@@ -1,7 +1,7 @@
 # Proposal
 
 - **Id:** `add-swagger-ui-and-load-script`
-- **Status:** approved
+- **Status:** implemented
 - **SRS requirements:** FR-API-001, NFR-PERF-002; SRS Should embed Swagger UI at `/docs`
 
 ## Why

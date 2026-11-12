@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: courier-outbox
-  version: 0.6.0
+  version: 0.7.0
   description: |
     Reliable outbound webhook delivery service.
 
@@ -10,7 +10,7 @@ info:
     as the handler (see docs/architecture/patterns-layering.md).
 
     Every path under `/v1` requires `Authorization: Bearer <api_key>`.
-    `/healthz`, `/readyz`, `/openapi.json`, and `/metrics` are public.
+    `/healthz`, `/readyz`, `/openapi.json`, `/docs`, and `/metrics` are public.
     Subscription CRUD, event enqueue, delivery list/detail, and DLQ replay
     are implemented. Live delivery counters are scraped from `courier worker`
     (`WORKER_METRICS_ADDR`, default `:9091`), not from the API process.
@@ -93,6 +93,22 @@ paths:
                     type: object
                   paths:
                     type: object
+  /docs:
+    get:
+      operationId: getDocs
+      summary: Swagger UI
+      description: |
+        Embedded Swagger UI for the served OpenAPI document. Public.
+        Assets are vendored in the binary; no runtime CDN.
+      tags: [ops]
+      security: []
+      responses:
+        "200":
+          description: HTML UI.
+          content:
+            text/html:
+              schema:
+                type: string
   /metrics:
     get:
       operationId: getMetrics
