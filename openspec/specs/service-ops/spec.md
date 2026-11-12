@@ -59,12 +59,12 @@ The system SHALL expose `GET /openapi.json` without authentication. It SHALL ret
 - **WHEN** a client sends `GET /openapi.json` with no Authorization header
 - **THEN** the response status is 200
 - **AND** the body is a JSON object with `openapi` and `paths`
-- **AND** `paths` includes `/healthz`, `/readyz`, `/openapi.json`, `/metrics`, `/v1/subscriptions`, `/v1/events`, and `/v1/deliveries`
+- **AND** `paths` includes `/healthz`, `/readyz`, `/openapi.json`, `/metrics`, `/docs`, `/v1/subscriptions`, `/v1/events`, and `/v1/deliveries`
 
 #### Scenario: OpenAPI matches handler auth
 - **WHEN** a reviewer compares `/v1` operations in the served document to the router
 - **THEN** every `/v1` operation requires bearer auth
-- **AND** `/healthz`, `/readyz`, `/openapi.json`, and `/metrics` do not
+- **AND** `/healthz`, `/readyz`, `/openapi.json`, `/docs`, and `/metrics` do not
 
 ### Requirement: Prometheus metrics
 The worker process SHALL expose `GET /metrics` without authentication as Prometheus text on a configurable listen address. It MUST register `courier_deliveries_total` (counter, `status` label), `courier_attempt_duration_seconds` (histogram), and `courier_dlq_total` (counter). After the worker records one successful delivery, those counters MUST be nonzero on that scrape. The API process MUST NOT register those delivery series. Docker Compose MUST publish the worker scrape address (FR-API-003, NFR-OBS-002).
@@ -95,3 +95,12 @@ The worker process SHALL expose `GET /metrics` without authentication as Prometh
 - **WHEN** an operator runs the documented Docker Compose stack
 - **THEN** the worker `GET /metrics` port is published to the host
 - **AND** README documents that live delivery counters are on the worker scrape, not the API
+
+### Requirement: Swagger UI at docs
+The system SHALL expose `GET /docs` and `GET /docs/` without authentication. The response MUST be 200 HTML that renders the served OpenAPI document using embedded assets, not a runtime CDN (FR-API-001 Should).
+
+#### Scenario: Docs is public HTML
+- **WHEN** a client sends `GET /docs` with no Authorization header
+- **THEN** the response status is 200
+- **AND** Content-Type is HTML
+- **AND** the body references `/openapi.json` and does not load script or stylesheet hosts outside this process
