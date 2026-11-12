@@ -112,7 +112,7 @@ The system SHALL store the signing secret as AES-256-GCM ciphertext (nonce conca
 - **THEN** the response status is 400 and `code` is `validation_failed`
 
 ### Requirement: SSRF protection on callback IP literals
-When `SSRF_PROTECTION` is true (the default), the system SHALL reject `target_url` whose host is an IP literal in loopback, private, link-local, CGNAT, unspecified, multicast, or broadcast ranges, including IPv4-mapped IPv6 forms. When `SSRF_PROTECTION` is false, IP literals that pass scheme checks are accepted. Hostname resolution at dial time is out of scope (FR-SUB-003, NFR-SEC-002).
+When `SSRF_PROTECTION` is true (the default), the system SHALL reject `target_url` whose host is an IP literal in loopback, private, link-local, CGNAT, unspecified, multicast, or broadcast ranges, including IPv4-mapped IPv6 forms, and SHALL reject hostnames that resolve to those ranges. Lookup failure MUST fail closed. When `SSRF_PROTECTION` is false, those destinations are accepted after scheme checks (FR-SUB-003, NFR-SEC-002).
 
 #### Scenario: Loopback IPv4 denied
 - **WHEN** `SSRF_PROTECTION` is true and a client submits `http://127.0.0.1/hooks` (HTTP allowed)
@@ -136,6 +136,18 @@ When `SSRF_PROTECTION` is true (the default), the system SHALL reject `target_ur
 
 #### Scenario: Protection off allows private IP
 - **WHEN** `SSRF_PROTECTION` is false and HTTP callbacks are allowed and a client submits `http://127.0.0.1:9090/hooks`
+- **THEN** the URL is accepted
+
+#### Scenario: Loopback hostname denied
+- **WHEN** `SSRF_PROTECTION` is true and a client submits `https://localhost/hooks`
+- **THEN** the response status is 400 and `code` is `validation_failed`
+
+#### Scenario: Metadata hostname denied
+- **WHEN** `SSRF_PROTECTION` is true and a client submits `https://metadata.google.internal/`
+- **THEN** the response status is 400 and `code` is `validation_failed`
+
+#### Scenario: Public hostname accepted
+- **WHEN** `SSRF_PROTECTION` is true and a client submits `https://example.com/hooks` and lookup returns a public address
 - **THEN** the URL is accepted
 
 ### Requirement: Per-API-key isolation
