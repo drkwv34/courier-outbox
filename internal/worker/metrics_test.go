@@ -97,7 +97,7 @@ func TestServeMetrics_AfterDelivered(t *testing.T) {
 	p := NewPrometheus()
 	p.ObserveAttempt(domain.DeliveryDelivered, 10*time.Millisecond)
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
